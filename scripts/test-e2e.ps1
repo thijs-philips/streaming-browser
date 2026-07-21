@@ -7,11 +7,19 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
-if (-not ('StreamingBrowserE2ENativeMethods' -as [type])) {
+if (-not ('StreamingBrowserE2ENativeMethodsV3' -as [type])) {
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
-public static class StreamingBrowserE2ENativeMethods {
+public static class StreamingBrowserE2ENativeMethodsV3 {
+    [StructLayout(LayoutKind.Sequential)]
+    public struct RECT { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetDlgItem(IntPtr window, int id);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool GetClientRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")]
     public static extern IntPtr SendMessage(IntPtr window, uint message,
         IntPtr wparam, IntPtr lparam);
@@ -80,6 +88,28 @@ try {
         throw "Viewer frame did not advance beyond $firstFrame"
     }
 
+    $producerWindow = Get-Process streaming_browser -ErrorAction Stop |
+        Where-Object MainWindowTitle | Select-Object -First 1
+    $visibilityCheckbox = [StreamingBrowserE2ENativeMethodsV3]::GetDlgItem(
+        $producerWindow.MainWindowHandle, 1001)
+    if ($visibilityCheckbox -eq [IntPtr]::Zero) {
+        throw 'Producer visibility checkbox not found'
+    }
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
+        $visibilityCheckbox, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    $null = $delay.WaitOne(500)
+    if ([StreamingBrowserE2ENativeMethodsV3]::IsWindowVisible(
+            $viewerWindow.MainWindowHandle)) {
+        throw 'Viewer did not hide after producer visibility toggle'
+    }
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
+        $visibilityCheckbox, 0x00F5, [IntPtr]::Zero, [IntPtr]::Zero) | Out-Null
+    $null = $delay.WaitOne(500)
+    if (-not [StreamingBrowserE2ENativeMethodsV3]::IsWindowVisible(
+            $viewerWindow.MainWindowHandle)) {
+        throw 'Viewer did not reappear after producer visibility toggle'
+    }
+
     $inputFixture = (Resolve-Path (Join-Path $root 'tests\fixtures\input.html')).Path
     $inputUrl = [Uri]::new($inputFixture).AbsoluteUri
     Stop-Process -Id $viewer.Id -Force
@@ -100,10 +130,22 @@ try {
     }
     if (-not $navigated) { throw 'Viewer URL command did not navigate producer' }
     $reconnected.Refresh()
-    $mousePoint = [IntPtr]((130 -shl 16) -bor 200)
-    [StreamingBrowserE2ENativeMethods]::SendMessage(
+    $clientRect = [StreamingBrowserE2ENativeMethodsV3+RECT]::new()
+    if (-not [StreamingBrowserE2ENativeMethodsV3]::GetClientRect(
+            $reconnected.MainWindowHandle, [ref]$clientRect)) {
+        throw 'Could not read viewer client rectangle'
+    }
+    $clientWidth = $clientRect.Right - $clientRect.Left
+    $clientHeight = $clientRect.Bottom - $clientRect.Top
+    $scale = [Math]::Min($clientWidth / 3840.0, $clientHeight / 2160.0)
+    $viewportWidth = 3840.0 * $scale
+    $viewportHeight = 2160.0 * $scale
+    $mouseX = [int](($clientWidth - $viewportWidth) / 2.0 + 600.0 * $scale)
+    $mouseY = [int](($clientHeight - $viewportHeight) / 2.0 + 400.0 * $scale)
+    $mousePoint = [IntPtr](($mouseY -shl 16) -bor ($mouseX -band 0xFFFF))
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
         $reconnected.MainWindowHandle, 0x0201, [IntPtr]1, $mousePoint) | Out-Null
-    [StreamingBrowserE2ENativeMethods]::SendMessage(
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
         $reconnected.MainWindowHandle, 0x0202, [IntPtr]0, $mousePoint) | Out-Null
     $clickDeadline = [DateTime]::UtcNow.AddSeconds(15)
     $clicked = $false
@@ -128,7 +170,7 @@ try {
         $null = $delay.WaitOne(100)
     }
     $popupViewer.Refresh()
-    [StreamingBrowserE2ENativeMethods]::SendMessage(
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
         $popupViewer.MainWindowHandle, 0x0201, [IntPtr]1, $mousePoint) | Out-Null
     $popupDeadline = [DateTime]::UtcNow.AddSeconds(15)
     $popupShown = $false
@@ -144,7 +186,7 @@ try {
         }
         $null = $delay.WaitOne(100)
     }
-    [StreamingBrowserE2ENativeMethods]::SendMessage(
+    [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
         $popupViewer.MainWindowHandle, 0x0202, [IntPtr]0, $mousePoint) | Out-Null
     if (-not $popupClicked) { throw 'Viewer click did not hit select control' }
     if (-not $popupShown) {

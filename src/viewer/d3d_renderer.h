@@ -2,6 +2,7 @@
 
 #include <d3d11_1.h>
 #include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 
 #include <cstdint>
@@ -18,6 +19,9 @@ class D3DRenderer final {
   bool ConsumeFrame(const protocol::FrameMetadata& metadata);
   bool Resize(unsigned width, unsigned height);
   void Render();
+  void SetPixelPerfect(bool enabled);
+  void Pan(float delta_x, float delta_y);
+  [[nodiscard]] bool pixel_perfect() const { return pixel_perfect_; }
 
   [[nodiscard]] unsigned source_width() const { return source_width_; }
   [[nodiscard]] unsigned source_height() const { return source_height_; }
@@ -58,6 +62,9 @@ class D3DRenderer final {
   unsigned source_width_ = 0;
   unsigned source_height_ = 0;
   bool has_frame_ = false;
+  bool pixel_perfect_ = false;
+  float pan_x_ = 0.0F;
+  float pan_y_ = 0.0F;
 };
 
 }  // namespace streaming::viewer

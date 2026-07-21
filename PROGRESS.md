@@ -22,9 +22,16 @@
 - Debug E2E result: browser frames advanced in the viewer; viewer navigation reached CEF; viewer mouse click reached the test page; viewer kill/restart reconnected with a fresh shared ring.
 - Known pinned-build result: the HTML select received the test click, but CEF M150 on this machine emitted only popup-hide and no popup-show callback. This is reported as a capability warning; popup composition code remains active for callbacks that are delivered.
 
-## Remaining hardening
+## 2026-07-21 — Phase 4 and final validation
 
-1. Add basic IME commit/composition forwarding and cursor state display.
-2. Run Release unit/E2E and sustained soak tests with resource measurements.
-3. Add portable package generation and verify from a clean extracted directory.
-4. Produce final validation report and commit the remaining milestones.
+- Added basic Win32 IME composition/commit/finish forwarding and standard CEF cursor propagation.
+- Added viewer aspect-fit, 1:1 pixel mode with Ctrl+Arrow panning, F11 fullscreen, and hideable toolbar.
+- Added deterministic GPU alpha readback validation for opaque, 50%-alpha, and transparent pixels.
+- Added DXGI local-memory budget diagnostics, Release soak testing, package generation, sandbox preparation, and packaged-binary validation.
+- Final Debug and Release unit/IPC suites pass: protocol and concurrent overlapped pipe tests.
+- Final Release E2E passes: continuous frames, producer visibility toggle, viewer navigation, webpage mouse input, viewer reconnect with a fresh ring.
+- Final Release alpha probe passes.
+- Final soak: 120 seconds at 30.1 observed fps (3,618 frames), then a final 60-second run at 30.4 fps (1,825 frames). No runtime error diagnostics; processes remained responsive.
+- GPU budget on the validation machine: 5,234 MiB local budget, approximately 6 MiB used before workload allocation.
+- Portable sandboxed package validated from the package directory. Archive size: 183,529,598 bytes.
+- Known limitation: the select control receives viewer input, but CEF M150 on this machine does not emit a popup-show callback. Popup composition remains implemented for delivered `PET_POPUP` callbacks.

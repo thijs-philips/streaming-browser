@@ -124,6 +124,21 @@ bool D3DRenderer::OpenRing(const protocol::RingDefinition& definition) {
   source_height_ = definition.height;
   has_frame_ = false;
   Log(LogLevel::kInfo, L"Viewer opened shared keyed-mutex texture ring");
+  Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
+  Microsoft::WRL::ComPtr<IDXGIAdapter> adapter;
+  Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter3;
+  DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+  if (SUCCEEDED(device_.As(&dxgi_device)) &&
+      SUCCEEDED(dxgi_device->GetAdapter(&adapter)) &&
+      SUCCEEDED(adapter.As(&adapter3)) &&
+      SUCCEEDED(adapter3->QueryVideoMemoryInfo(
+          0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory))) {
+    Log(LogLevel::kInfo,
+        L"Viewer local GPU memory budget MiB=" +
+            std::to_wstring(memory.Budget / (1024U * 1024U)) +
+            L", usage MiB=" +
+            std::to_wstring(memory.CurrentUsage / (1024U * 1024U)));
+  }
   return true;
 }
 
@@ -217,6 +232,19 @@ bool D3DRenderer::WindowToSource(int window_x, int window_y, int* source_x,
                        viewport.Height),
       0, static_cast<int>(source_height_) - 1);
   return true;
+}
+
+void D3DRenderer::SetPixelPerfect(bool enabled) {
+  pixel_perfect_ = enabled;
+  pan_x_ = 0.0F;
+  pan_y_ = 0.0F;
+}
+
+void D3DRenderer::Pan(float delta_x, float delta_y) {
+  if (pixel_perfect_) {
+    pan_x_ += delta_x;
+    pan_y_ += delta_y;
+  }
 }
 
 bool D3DRenderer::CreateDevice(const LUID* required_luid) {
@@ -394,13 +422,17 @@ D3D11_VIEWPORT D3DRenderer::FrameViewport() const {
       back_buffer_height_ == 0) {
     return viewport;
   }
-  const float scale = std::min(
-      static_cast<float>(back_buffer_width_) / source_width_,
-      static_cast<float>(back_buffer_height_) / source_height_);
+    const float scale = pixel_perfect_
+                ? 1.0F
+                : std::min(
+                  static_cast<float>(back_buffer_width_) /
+                    source_width_,
+                  static_cast<float>(back_buffer_height_) /
+                    source_height_);
   viewport.Width = std::max(1.0F, source_width_ * scale);
   viewport.Height = std::max(1.0F, source_height_ * scale);
-  viewport.TopLeftX = (back_buffer_width_ - viewport.Width) * 0.5F;
-  viewport.TopLeftY = (back_buffer_height_ - viewport.Height) * 0.5F;
+  viewport.TopLeftX = (back_buffer_width_ - viewport.Width) * 0.5F + pan_x_;
+  viewport.TopLeftY = (back_buffer_height_ - viewport.Height) * 0.5F + pan_y_;
   viewport.MaxDepth = 1.0F;
   return viewport;
 }

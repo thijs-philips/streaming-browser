@@ -20,7 +20,8 @@ constexpr int kViewHeight = 2160;
 
 BrowserClient::BrowserClient(DWORD launcher_thread_id,
                              bool force_transparency,
-                             bool viewer_visible)
+                             bool viewer_visible,
+                             bool alpha_probe_enabled)
     : launcher_thread_id_(launcher_thread_id),
       force_transparency_(force_transparency),
       viewer_visible_(viewer_visible) {
@@ -39,6 +40,11 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
       [this](const protocol::InputEvent& event) {
         CefPostTask(TID_UI,
                     base::BindOnce(&BrowserClient::OnViewerInput, this, event));
+      },
+      [this](protocol::ImeEvent event) {
+        CefPostTask(TID_UI,
+                    base::BindOnce(&BrowserClient::OnViewerIme, this,
+                                   std::move(event)));
       },
       [this](protocol::MessageType type, std::string value) {
         CefPostTask(TID_UI,
@@ -65,7 +71,8 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
         if (stream_server_) {
           stream_server_->NotifyRingReady();
         }
-      });
+      },
+      alpha_probe_enabled);
   stream_server_->Start();
 }
 
@@ -258,9 +265,12 @@ void BrowserClient::OnAddressChange(CefRefPtr<CefBrowser>,
 
 bool BrowserClient::OnCursorChange(CefRefPtr<CefBrowser>,
                                    CefCursorHandle,
-                                   cef_cursor_type_t,
+                                   cef_cursor_type_t type,
                                    const CefCursorInfo&) {
   CEF_REQUIRE_UI_THREAD();
+  if (stream_server_) {
+    stream_server_->SendCursorState(static_cast<std::uint32_t>(type));
+  }
   return true;
 }
 
@@ -423,6 +433,44 @@ void BrowserClient::OnViewerCommand(protocol::MessageType type,
       browser_->GetHost()->ImeCancelComposition();
       break;
     default:
+      break;
+  }
+}
+
+void BrowserClient::OnViewerIme(protocol::ImeEvent event) {
+  CEF_REQUIRE_UI_THREAD();
+  if (!browser_ || !browser_->IsValid()) {
+    return;
+  }
+  CefRefPtr<CefBrowserHost> host = browser_->GetHost();
+  const CefString text(event.text);
+  switch (event.kind) {
+    case protocol::ImeKind::kComposition: {
+      std::vector<CefCompositionUnderline> underlines;
+      if (!event.text.empty()) {
+        CefCompositionUnderline underline;
+        underline.range =
+          CefRange(0, static_cast<std::uint32_t>(event.text.size()));
+        underline.color = CefColorSetARGB(255, 0, 0, 0);
+        underline.background_color = CefColorSetARGB(0, 0, 0, 0);
+        underline.thick = false;
+        underline.style = CEF_CUS_SOLID;
+        underlines.push_back(underline);
+      }
+      host->ImeSetComposition(
+          text, underlines, CefRange::InvalidRange(),
+          CefRange(static_cast<std::uint32_t>(event.text.size()),
+                   static_cast<std::uint32_t>(event.text.size())));
+      break;
+    }
+    case protocol::ImeKind::kCommit:
+      host->ImeCommitText(text, CefRange::InvalidRange(), 0);
+      break;
+    case protocol::ImeKind::kFinish:
+      host->ImeFinishComposingText(false);
+      break;
+    case protocol::ImeKind::kCancel:
+      host->ImeCancelComposition();
       break;
   }
 }

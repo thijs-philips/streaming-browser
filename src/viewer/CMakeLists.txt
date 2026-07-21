@@ -21,4 +21,5 @@ target_link_libraries(${VIEWER_TARGET} PRIVATE
   dxgi.lib
   d3dcompiler.lib)
 target_link_libraries(${VIEWER_TARGET} PRIVATE shell32.lib)
+target_link_libraries(${VIEWER_TARGET} PRIVATE imm32.lib)
 ADD_WINDOWS_MANIFEST("${CMAKE_CURRENT_SOURCE_DIR}/win" "${VIEWER_TARGET}" "exe")

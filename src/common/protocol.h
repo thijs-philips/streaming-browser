@@ -39,6 +39,7 @@ enum class MessageType : std::uint16_t {
   kStopLoad,
   kCommandResult,
   kInputEvent,
+  kImeEvent,
   kCursorState,
   kShowViewer,
   kHideViewer,
@@ -122,6 +123,18 @@ struct InputEvent {
   std::int32_t value2 = 0;
 };
 
+enum class ImeKind : std::uint16_t {
+  kComposition = 1,
+  kCommit,
+  kFinish,
+  kCancel,
+};
+
+struct ImeEvent {
+  ImeKind kind = ImeKind::kCancel;
+  std::u16string text;
+};
+
 class ByteWriter final {
  public:
   void WriteU16(std::uint16_t value);
@@ -183,6 +196,11 @@ std::vector<std::byte> SerializeInputEvent(const InputEvent& event);
 bool ParseInputEvent(std::span<const std::byte> bytes,
            InputEvent* event,
            std::string* error);
+
+std::vector<std::byte> SerializeImeEvent(const ImeEvent& event);
+bool ParseImeEvent(std::span<const std::byte> bytes,
+                   ImeEvent* event,
+                   std::string* error);
 
 bool IsCritical(MessageType type);
 

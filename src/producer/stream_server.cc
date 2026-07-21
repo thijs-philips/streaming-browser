@@ -56,12 +56,14 @@ StreamServer::StreamServer(RingProvider ring_provider,
                            ReadyCallback ready_callback,
                            ReleaseCallback release_callback,
                            InputCallback input_callback,
+                           ImeCallback ime_callback,
                            CommandCallback command_callback,
                            DisconnectCallback disconnect_callback)
     : ring_provider_(std::move(ring_provider)),
       ready_callback_(std::move(ready_callback)),
       release_callback_(std::move(release_callback)),
       input_callback_(std::move(input_callback)),
+      ime_callback_(std::move(ime_callback)),
       command_callback_(std::move(command_callback)),
       disconnect_callback_(std::move(disconnect_callback)),
       session_(CreateSessionId()) {
@@ -139,6 +141,13 @@ bool StreamServer::SetViewerVisible(bool visible) {
   return QueueMessage(visible ? protocol::MessageType::kShowViewer
                               : protocol::MessageType::kHideViewer,
                       {}, false);
+}
+
+bool StreamServer::SendCursorState(std::uint32_t cursor_type) {
+  protocol::ByteWriter writer;
+  writer.WriteU32(cursor_type);
+  return QueueMessage(protocol::MessageType::kCursorState, writer.Take(),
+                      false);
 }
 
 void StreamServer::ServerMain() {
@@ -334,6 +343,15 @@ void StreamServer::ReaderMain(HANDLE pipe) {
         if (protocol::ParseInputEvent(message.payload, &event, &parse_error) &&
             input_callback_) {
           input_callback_(event);
+        }
+        break;
+      }
+      case protocol::MessageType::kImeEvent: {
+        protocol::ImeEvent event;
+        std::string parse_error;
+        if (protocol::ParseImeEvent(message.payload, &event, &parse_error) &&
+            ime_callback_) {
+          ime_callback_(std::move(event));
         }
         break;
       }

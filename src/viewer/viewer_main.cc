@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <windowsx.h>
 #include <shellapi.h>
+#include <imm.h>
 
 #include <algorithm>
 #include <cstdint>
@@ -9,6 +10,7 @@
 #include <string_view>
 #include <utility>
 
+#include "include/internal/cef_types.h"
 #include "src/common/logging.h"
 #include "src/common/protocol.h"
 #include "src/viewer/d3d_renderer.h"
@@ -22,6 +24,7 @@ constexpr UINT kFrameMessage = WM_APP + 2;
 constexpr UINT kNavigationMessage = WM_APP + 3;
 constexpr UINT kConnectionMessage = WM_APP + 4;
 constexpr UINT kVisibilityMessage = WM_APP + 5;
+constexpr UINT kCursorMessage = WM_APP + 6;
 constexpr int kToolbarHeight = 38;
 constexpr int kBackButton = 100;
 constexpr int kForwardButton = 101;
@@ -29,6 +32,7 @@ constexpr int kReloadButton = 102;
 constexpr int kGoButton = 103;
 constexpr int kUrlEdit = 104;
 constexpr int kToggleToolbar = 200;
+constexpr int kTogglePixelPerfect = 201;
 
 struct WindowState {
   HWND window = nullptr;
@@ -44,6 +48,9 @@ struct WindowState {
   bool updating_url = false;
   bool url_editing = false;
   std::string startup_navigation;
+  HCURSOR page_cursor = LoadCursor(nullptr, IDC_ARROW);
+  bool fullscreen = false;
+  WINDOWPLACEMENT window_placement{sizeof(WINDOWPLACEMENT)};
 };
 
 std::uint16_t CefModifiers() {
@@ -107,11 +114,26 @@ void NavigateFromEdit(WindowState* state) {
   SetFocus(state->window);
 }
 
+std::u16string ReadImeString(HWND window, DWORD index) {
+  HIMC context = ImmGetContext(window);
+  if (context == nullptr) return {};
+  const LONG bytes = ImmGetCompositionStringW(context, index, nullptr, 0);
+  std::u16string result;
+  if (bytes > 0) {
+    result.resize(static_cast<std::size_t>(bytes) / sizeof(char16_t));
+    ImmGetCompositionStringW(context, index, result.data(), bytes);
+  }
+  ImmReleaseContext(window, context);
+  return result;
+}
+
 void CreateToolbar(WindowState* state, HINSTANCE instance) {
   HMENU menu = CreateMenu();
   HMENU view_menu = CreatePopupMenu();
   AppendMenuW(view_menu, MF_STRING | MF_CHECKED, kToggleToolbar,
               L"Show toolbar");
+  AppendMenuW(view_menu, MF_STRING, kTogglePixelPerfect,
+              L"1:1 pixel mode (Ctrl+Arrows to pan)");
   AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), L"View");
   SetMenu(state->window, menu);
   state->back = CreateWindowW(L"BUTTON", L"←", WS_CHILD | WS_VISIBLE,
@@ -221,6 +243,30 @@ LRESULT CALLBACK WindowProc(HWND window,
     case kVisibilityMessage:
       ShowWindow(window, wparam != 0 ? SW_SHOW : SW_HIDE);
       return 0;
+    case kCursorMessage: {
+      LPCWSTR cursor_id = IDC_ARROW;
+      switch (static_cast<cef_cursor_type_t>(wparam)) {
+        case CT_IBEAM: cursor_id = IDC_IBEAM; break;
+        case CT_HAND: cursor_id = IDC_HAND; break;
+        case CT_CROSS: cursor_id = IDC_CROSS; break;
+        case CT_WAIT: cursor_id = IDC_WAIT; break;
+        case CT_NORTHSOUTHRESIZE: cursor_id = IDC_SIZENS; break;
+        case CT_EASTWESTRESIZE: cursor_id = IDC_SIZEWE; break;
+        case CT_NORTHWESTSOUTHEASTRESIZE: cursor_id = IDC_SIZENWSE; break;
+        case CT_NORTHEASTSOUTHWESTRESIZE: cursor_id = IDC_SIZENESW; break;
+        case CT_MOVE: cursor_id = IDC_SIZEALL; break;
+        case CT_NOTALLOWED: cursor_id = IDC_NO; break;
+        default: break;
+      }
+      state->page_cursor = LoadCursor(nullptr, cursor_id);
+      return 0;
+    }
+    case WM_SETCURSOR:
+      if (LOWORD(lparam) == HTCLIENT) {
+        SetCursor(state->page_cursor);
+        return TRUE;
+      }
+      break;
     case WM_COMMAND:
       if (LOWORD(wparam) == kToggleToolbar) {
         state->toolbar_visible = !state->toolbar_visible;
@@ -233,6 +279,14 @@ LRESULT CALLBACK WindowProc(HWND window,
         CheckMenuItem(GetMenu(window), kToggleToolbar,
                       MF_BYCOMMAND |
                           (state->toolbar_visible ? MF_CHECKED : MF_UNCHECKED));
+        return 0;
+      }
+      if (LOWORD(wparam) == kTogglePixelPerfect) {
+        state->renderer.SetPixelPerfect(!state->renderer.pixel_perfect());
+        CheckMenuItem(
+            GetMenu(window), kTogglePixelPerfect,
+            MF_BYCOMMAND |
+                (state->renderer.pixel_perfect() ? MF_CHECKED : MF_UNCHECKED));
         return 0;
       }
       if (LOWORD(wparam) == kUrlEdit && HIWORD(wparam) == EN_CHANGE &&
@@ -317,6 +371,39 @@ LRESULT CALLBACK WindowProc(HWND window,
     case WM_KEYDOWN:
     case WM_KEYUP:
     case WM_CHAR:
+      if (message == WM_KEYDOWN && wparam == VK_F11) {
+        state->fullscreen = !state->fullscreen;
+        if (state->fullscreen) {
+          state->window_placement.length = sizeof(WINDOWPLACEMENT);
+          GetWindowPlacement(window, &state->window_placement);
+          MONITORINFO monitor{sizeof(MONITORINFO)};
+          GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
+                          &monitor);
+          SetWindowLongPtrW(window, GWL_STYLE,
+                            WS_POPUP | WS_VISIBLE);
+          SetWindowPos(window, HWND_TOP, monitor.rcMonitor.left,
+                       monitor.rcMonitor.top,
+                       monitor.rcMonitor.right - monitor.rcMonitor.left,
+                       monitor.rcMonitor.bottom - monitor.rcMonitor.top,
+                       SWP_FRAMECHANGED);
+        } else {
+          SetWindowLongPtrW(window, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+          SetWindowPlacement(window, &state->window_placement);
+          SetWindowPos(window, nullptr, 0, 0, 0, 0,
+                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
+                           SWP_FRAMECHANGED);
+        }
+        return 0;
+      }
+      if (message == WM_KEYDOWN && state->renderer.pixel_perfect() &&
+          GetKeyState(VK_CONTROL) < 0) {
+        switch (wparam) {
+          case VK_LEFT: state->renderer.Pan(64.0F, 0.0F); return 0;
+          case VK_RIGHT: state->renderer.Pan(-64.0F, 0.0F); return 0;
+          case VK_UP: state->renderer.Pan(0.0F, 64.0F); return 0;
+          case VK_DOWN: state->renderer.Pan(0.0F, -64.0F); return 0;
+        }
+      }
       if (state->client && state->connected && GetFocus() == window) {
         streaming::protocol::InputEvent event;
         event.kind = message == WM_KEYDOWN
@@ -330,6 +417,28 @@ LRESULT CALLBACK WindowProc(HWND window,
         state->client->SendInput(event);
       }
       break;
+    case WM_IME_STARTCOMPOSITION:
+      return 0;
+    case WM_IME_COMPOSITION:
+      if (state->client && state->connected) {
+        if ((lparam & GCS_RESULTSTR) != 0) {
+          state->client->SendIme(
+              {streaming::protocol::ImeKind::kCommit,
+               ReadImeString(window, GCS_RESULTSTR)});
+        }
+        if ((lparam & GCS_COMPSTR) != 0) {
+          state->client->SendIme(
+              {streaming::protocol::ImeKind::kComposition,
+               ReadImeString(window, GCS_COMPSTR)});
+        }
+      }
+      return 0;
+    case WM_IME_ENDCOMPOSITION:
+      if (state->client && state->connected) {
+        state->client->SendIme(
+            {streaming::protocol::ImeKind::kFinish, {}});
+      }
+      return 0;
     case WM_ERASEBKGND:
       return 1;
     case WM_DESTROY:
@@ -404,6 +513,9 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
       },
       [window](bool visible) {
         PostMessageW(window, kVisibilityMessage, visible ? 1 : 0, 0);
+      },
+      [window](std::uint32_t cursor_type) {
+        PostMessageW(window, kCursorMessage, cursor_type, 0);
       });
   state->client->Start();
 

@@ -103,6 +103,17 @@ int main() {
     return Fail("input event round-trip mismatch");
   }
 
+  ImeEvent ime;
+  ime.kind = ImeKind::kComposition;
+  ime.text = u"テスト";
+  const auto ime_payload = SerializeImeEvent(ime);
+  ImeEvent parsed_ime;
+  if (!ParseImeEvent(ime_payload, &parsed_ime, &error) ||
+      parsed_ime.kind != ImeKind::kComposition ||
+      parsed_ime.text != ime.text) {
+    return Fail("IME event round-trip mismatch");
+  }
+
   std::cout << "protocol tests passed\n";
   return 0;
 }

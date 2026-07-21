@@ -37,7 +37,7 @@ void ProducerApp::OnContextInitialized() {
 
   CefRefPtr<BrowserClient> client =
       new BrowserClient(launcher_thread_id_, config_.force_transparency,
-              config_.viewer_visible);
+                        config_.viewer_visible, config_.alpha_probe_enabled);
   {
     base::AutoLock lock(client_lock_);
     client_ = client;

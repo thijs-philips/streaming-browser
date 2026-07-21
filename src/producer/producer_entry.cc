@@ -57,6 +57,7 @@ int RunMain(HINSTANCE instance,
   }
   config.force_transparency = command_line->HasSwitch("force-transparency");
   config.viewer_visible = command_line->HasSwitch("visible");
+  config.alpha_probe_enabled = command_line->HasSwitch("alpha-probe");
 
   const DWORD main_thread_id = GetCurrentThreadId();
   CefRefPtr<streaming::producer::ProducerApp> app(

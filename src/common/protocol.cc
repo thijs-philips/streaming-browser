@@ -364,6 +364,55 @@ bool ParseInputEvent(std::span<const std::byte> bytes,
   return true;
 }
 
+std::vector<std::byte> SerializeImeEvent(const ImeEvent& event) {
+  ByteWriter writer;
+  writer.WriteU16(static_cast<std::uint16_t>(event.kind));
+  const auto length = static_cast<std::uint32_t>(
+      std::min<std::size_t>(event.text.size(), 4096));
+  writer.WriteU32(length);
+  for (std::uint32_t i = 0; i < length; ++i) {
+    writer.WriteU16(static_cast<std::uint16_t>(event.text[i]));
+  }
+  return writer.Take();
+}
+
+bool ParseImeEvent(std::span<const std::byte> bytes,
+                   ImeEvent* event,
+                   std::string* error) {
+  if (event == nullptr) {
+    SetError(error, "null IME event output");
+    return false;
+  }
+  ByteReader reader(bytes);
+  std::uint16_t kind = 0;
+  std::uint32_t length = 0;
+  if (!reader.ReadU16(&kind) || !reader.ReadU32(&length) || length > 4096) {
+    SetError(error, "invalid IME event header");
+    return false;
+  }
+  if (kind < static_cast<std::uint16_t>(ImeKind::kComposition) ||
+      kind > static_cast<std::uint16_t>(ImeKind::kCancel)) {
+    SetError(error, "unknown IME event kind");
+    return false;
+  }
+  event->kind = static_cast<ImeKind>(kind);
+  event->text.clear();
+  event->text.reserve(length);
+  for (std::uint32_t i = 0; i < length; ++i) {
+    std::uint16_t character = 0;
+    if (!reader.ReadU16(&character)) {
+      SetError(error, "truncated IME event text");
+      return false;
+    }
+    event->text.push_back(static_cast<char16_t>(character));
+  }
+  if (!reader.empty()) {
+    SetError(error, "unexpected trailing IME event data");
+    return false;
+  }
+  return true;
+}
+
 bool IsCritical(MessageType type) {
   switch (type) {
     case MessageType::kRingDefinition:

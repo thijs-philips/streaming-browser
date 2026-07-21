@@ -24,6 +24,7 @@ class StreamServer final {
   using ReleaseCallback =
       std::function<void(std::uint32_t slot, std::uint64_t frame_id)>;
   using InputCallback = std::function<void(const protocol::InputEvent& event)>;
+  using ImeCallback = std::function<void(protocol::ImeEvent event)>;
   using CommandCallback = std::function<void(protocol::MessageType type,
                                              std::string value)>;
   using DisconnectCallback = std::function<void()>;
@@ -32,6 +33,7 @@ class StreamServer final {
                ReadyCallback ready_callback,
                ReleaseCallback release_callback,
                InputCallback input_callback,
+               ImeCallback ime_callback,
                CommandCallback command_callback,
                DisconnectCallback disconnect_callback);
   ~StreamServer();
@@ -48,6 +50,7 @@ class StreamServer final {
                            bool can_go_back,
                            bool can_go_forward);
   bool SetViewerVisible(bool visible);
+  bool SendCursorState(std::uint32_t cursor_type);
 
   [[nodiscard]] bool connected() const {
     return connected_.load(std::memory_order_acquire);
@@ -72,6 +75,7 @@ class StreamServer final {
   ReadyCallback ready_callback_;
   ReleaseCallback release_callback_;
   InputCallback input_callback_;
+  ImeCallback ime_callback_;
   CommandCallback command_callback_;
   DisconnectCallback disconnect_callback_;
 

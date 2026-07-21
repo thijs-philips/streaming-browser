@@ -30,7 +30,8 @@ class BrowserClient final : public CefClient,
  public:
   BrowserClient(DWORD launcher_thread_id,
                 bool force_transparency,
-                bool viewer_visible);
+                bool viewer_visible,
+                bool alpha_probe_enabled);
 
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -127,6 +128,7 @@ class BrowserClient final : public CefClient,
   void OnViewerReady();
   void OnFrameReleased(std::uint32_t slot, std::uint64_t frame_id);
   void OnViewerInput(protocol::InputEvent event);
+  void OnViewerIme(protocol::ImeEvent event);
   void OnViewerCommand(protocol::MessageType type, std::string value);
   void OnViewerDisconnected();
   void PublishNavigationState();

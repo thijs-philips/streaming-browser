@@ -68,9 +68,11 @@ D3D11_TEXTURE2D_DESC MakeOwnedDescription(
 }  // namespace
 
 D3DFramePipeline::D3DFramePipeline(PublishCallback publish_callback,
-                                   RingReadyCallback ring_ready_callback)
+                                   RingReadyCallback ring_ready_callback,
+                                   bool alpha_probe_enabled)
     : publish_callback_(std::move(publish_callback)),
-      ring_ready_callback_(std::move(ring_ready_callback)) {
+      ring_ready_callback_(std::move(ring_ready_callback)),
+      alpha_probe_enabled_(alpha_probe_enabled) {
   const HRESULT result = CreateDXGIFactory1(IID_PPV_ARGS(&factory_));
   if (FAILED(result)) {
     Log(LogLevel::kError, L"CreateDXGIFactory1 failed; accelerated capture cannot initialize");
@@ -166,6 +168,14 @@ bool D3DFramePipeline::CopyFromCef(
             {0, 0, static_cast<std::int32_t>(source_desc.Width),
              static_cast<std::int32_t>(source_desc.Height)});
       }
+    }
+    if (alpha_probe_enabled_ && !alpha_probe_completed_) {
+      if (!ProbeAlpha(slot->texture.Get())) {
+        FailFastGpu(L"Deterministic alpha probe failed", E_FAIL);
+      }
+      alpha_probe_completed_ = true;
+      Log(LogLevel::kInfo,
+          L"Alpha probe passed: opaque, 50%, and transparent pixels preserved");
     }
   } else {
     latest_metadata_.damage.clear();
@@ -321,6 +331,17 @@ bool D3DFramePipeline::DiscoverDeviceAndOpen(
     std::wstring message = L"Selected CEF GPU adapter: ";
     message.append(adapter_desc.Description);
     Log(LogLevel::kInfo, message);
+    Microsoft::WRL::ComPtr<IDXGIAdapter3> adapter3;
+    DXGI_QUERY_VIDEO_MEMORY_INFO memory{};
+    if (SUCCEEDED(adapter.As(&adapter3)) &&
+      SUCCEEDED(adapter3->QueryVideoMemoryInfo(
+        0, DXGI_MEMORY_SEGMENT_GROUP_LOCAL, &memory))) {
+      Log(LogLevel::kInfo,
+        L"Producer local GPU memory budget MiB=" +
+          std::to_wstring(memory.Budget / (1024U * 1024U)) +
+          L", usage MiB=" +
+          std::to_wstring(memory.CurrentUsage / (1024U * 1024U)));
+    }
     return true;
   }
   return false;
@@ -610,6 +631,43 @@ bool D3DFramePipeline::CompositePopup(ID3D11Texture2D* destination) {
   context_->OMSetRenderTargets(1, &null_target, nullptr);
   context_->OMSetBlendState(nullptr, nullptr, 0xFFFFFFFFU);
   return true;
+}
+
+bool D3DFramePipeline::ProbeAlpha(ID3D11Texture2D* texture) {
+  if (view_desc_.Width <= 1000 || view_desc_.Height <= 1000) {
+    return false;
+  }
+  D3D11_TEXTURE2D_DESC staging_desc = view_desc_;
+  staging_desc.Usage = D3D11_USAGE_STAGING;
+  staging_desc.BindFlags = 0;
+  staging_desc.CPUAccessFlags = D3D11_CPU_ACCESS_READ;
+  staging_desc.MiscFlags = 0;
+  Microsoft::WRL::ComPtr<ID3D11Texture2D> staging;
+  Microsoft::WRL::ComPtr<ID3D11Query> completion;
+  D3D11_QUERY_DESC query_desc{D3D11_QUERY_EVENT, 0};
+  if (FAILED(device_->CreateTexture2D(&staging_desc, nullptr, &staging)) ||
+      FAILED(device_->CreateQuery(&query_desc, &completion))) {
+    return false;
+  }
+  context_->CopyResource(staging.Get(), texture);
+  context_->End(completion.Get());
+  if (!WaitForCopy(completion.Get())) {
+    return false;
+  }
+  D3D11_MAPPED_SUBRESOURCE mapped{};
+  if (FAILED(context_->Map(staging.Get(), 0, D3D11_MAP_READ, 0, &mapped))) {
+    return false;
+  }
+  const auto alpha_at = [&mapped](std::uint32_t x, std::uint32_t y) {
+    const auto* row = static_cast<const std::byte*>(mapped.pData) +
+                      static_cast<std::size_t>(mapped.RowPitch) * y;
+    return std::to_integer<std::uint8_t>(row[x * 4U + 3U]);
+  };
+  const std::uint8_t opaque = alpha_at(10, 10);
+  const std::uint8_t half = alpha_at(300, 100);
+  const std::uint8_t transparent = alpha_at(1000, 1000);
+  context_->Unmap(staging.Get(), 0);
+  return opaque >= 250 && half >= 120 && half <= 136 && transparent <= 5;
 }
 
 bool D3DFramePipeline::WaitForCopy(ID3D11Query* completion) {

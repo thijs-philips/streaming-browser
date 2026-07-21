@@ -13,12 +13,14 @@ StreamClient::StreamClient(RingCallback ring_callback,
                            FrameCallback frame_callback,
                            NavigationCallback navigation_callback,
                            StatusCallback status_callback,
-                           VisibilityCallback visibility_callback)
+                           VisibilityCallback visibility_callback,
+                           CursorCallback cursor_callback)
     : ring_callback_(std::move(ring_callback)),
       frame_callback_(std::move(frame_callback)),
       navigation_callback_(std::move(navigation_callback)),
       status_callback_(std::move(status_callback)),
-      visibility_callback_(std::move(visibility_callback)) {}
+      visibility_callback_(std::move(visibility_callback)),
+      cursor_callback_(std::move(cursor_callback)) {}
 
 StreamClient::~StreamClient() {
   Stop();
@@ -67,6 +69,11 @@ bool StreamClient::ReleaseFrame(std::uint32_t slot, std::uint64_t frame_id) {
 bool StreamClient::SendInput(const protocol::InputEvent& event) {
   return Send(protocol::MessageType::kInputEvent,
               protocol::SerializeInputEvent(event));
+}
+
+bool StreamClient::SendIme(const protocol::ImeEvent& event) {
+  return Send(protocol::MessageType::kImeEvent,
+              protocol::SerializeImeEvent(event));
 }
 
 bool StreamClient::SendCommand(protocol::MessageType type, std::string value) {
@@ -219,6 +226,14 @@ bool StreamClient::ConnectAndRun() {
                                protocol::MessageType::kShowViewer);
         }
         break;
+      case protocol::MessageType::kCursorState: {
+        protocol::ByteReader reader(message.payload);
+        std::uint32_t cursor_type = 0;
+        if (reader.ReadU32(&cursor_type) && reader.empty() && cursor_callback_) {
+          cursor_callback_(cursor_type);
+        }
+        break;
+      }
       case protocol::MessageType::kStreamReset:
       case protocol::MessageType::kShutdown:
       case protocol::MessageType::kError:

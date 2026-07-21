@@ -15,6 +15,7 @@ struct ProducerConfig {
   std::string url = "https://example.com";
   bool force_transparency = false;
   bool viewer_visible = false;
+  bool alpha_probe_enabled = false;
 };
 
 class ProducerApp final : public CefApp, public CefBrowserProcessHandler {

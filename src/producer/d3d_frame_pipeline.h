@@ -2,6 +2,7 @@
 
 #include <d3d11_1.h>
 #include <dxgi1_2.h>
+#include <dxgi1_4.h>
 #include <wrl/client.h>
 
 #include <array>
@@ -35,7 +36,8 @@ class D3DFramePipeline final {
   using RingReadyCallback = std::function<void()>;
 
   D3DFramePipeline(PublishCallback publish_callback,
-                   RingReadyCallback ring_ready_callback);
+                   RingReadyCallback ring_ready_callback,
+                   bool alpha_probe_enabled);
   ~D3DFramePipeline() = default;
 
   D3DFramePipeline(const D3DFramePipeline&) = delete;
@@ -83,6 +85,7 @@ class D3DFramePipeline final {
   bool CreateCompositorResources();
   bool PublishLatest();
   bool CompositePopup(ID3D11Texture2D* destination);
+  bool ProbeAlpha(ID3D11Texture2D* texture);
   bool WaitForCopy(ID3D11Query* completion);
   [[noreturn]] void FailFastGpu(const wchar_t* reason, HRESULT result) const;
 
@@ -104,6 +107,8 @@ class D3DFramePipeline final {
   std::uint64_t generation_ = 1;
   bool streaming_enabled_ = false;
   bool popup_visible_ = false;
+  bool alpha_probe_enabled_ = false;
+  bool alpha_probe_completed_ = false;
   CefRect popup_bounds_{};
   protocol::FrameMetadata latest_metadata_{};
 
