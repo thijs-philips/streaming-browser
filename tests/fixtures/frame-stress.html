@@ -1,0 +1,23 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body,canvas{margin:0;width:100%;height:100%;overflow:hidden;background:transparent}</style>
+<canvas id="c" width="3840" height="2160"></canvas>
+<script>
+const c = document.getElementById('c');
+const x = c.getContext('2d', { alpha: true });
+let frame = 0;
+function draw(now) {
+  frame++;
+  const r = frame & 255;
+  const g = (frame >> 8) & 255;
+  const b = (frame >> 16) & 255;
+  x.clearRect(0, 0, c.width, c.height);
+  x.fillStyle = `rgb(${r} ${g} ${b})`;
+  x.fillRect(0, 0, c.width, c.height);
+  x.fillStyle = 'white';
+  x.font = '160px monospace';
+  x.fillText(String(frame), 100, 220);
+  requestAnimationFrame(draw);
+}
+requestAnimationFrame(draw);
+</script>
