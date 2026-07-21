@@ -4,6 +4,8 @@
 #include <array>
 #include <limits>
 
+#include "src/common/win_handle.h"
+
 namespace streaming {
 namespace {
 
@@ -21,8 +23,23 @@ bool ReadExact(HANDLE pipe, std::span<std::byte> output, std::wstring* error) {
     const DWORD request = static_cast<DWORD>(std::min<std::size_t>(
         output.size() - position, std::numeric_limits<DWORD>::max()));
     DWORD received = 0;
-    if (!ReadFile(pipe, output.data() + position, request, &received, nullptr)) {
-      SetError(error, L"named-pipe read failed");
+    UniqueHandle event(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    if (!event) {
+      SetError(error, L"named-pipe read event creation failed");
+      return false;
+    }
+    OVERLAPPED operation{};
+    operation.hEvent = event.get();
+    if (!ReadFile(pipe, output.data() + position, request, nullptr,
+                  &operation)) {
+      if (GetLastError() != ERROR_IO_PENDING ||
+          WaitForSingleObject(event.get(), INFINITE) != WAIT_OBJECT_0 ||
+          !GetOverlappedResult(pipe, &operation, &received, FALSE)) {
+        SetError(error, L"named-pipe read failed");
+        return false;
+      }
+    } else if (!GetOverlappedResult(pipe, &operation, &received, TRUE)) {
+      SetError(error, L"named-pipe read completion failed");
       return false;
     }
     if (received == 0) {
@@ -42,8 +59,23 @@ bool WriteExact(HANDLE pipe,
     const DWORD request = static_cast<DWORD>(std::min<std::size_t>(
         input.size() - position, std::numeric_limits<DWORD>::max()));
     DWORD written = 0;
-    if (!WriteFile(pipe, input.data() + position, request, &written, nullptr)) {
-      SetError(error, L"named-pipe write failed");
+    UniqueHandle event(CreateEventW(nullptr, TRUE, FALSE, nullptr));
+    if (!event) {
+      SetError(error, L"named-pipe write event creation failed");
+      return false;
+    }
+    OVERLAPPED operation{};
+    operation.hEvent = event.get();
+    if (!WriteFile(pipe, input.data() + position, request, nullptr,
+                   &operation)) {
+      if (GetLastError() != ERROR_IO_PENDING ||
+          WaitForSingleObject(event.get(), INFINITE) != WAIT_OBJECT_0 ||
+          !GetOverlappedResult(pipe, &operation, &written, FALSE)) {
+        SetError(error, L"named-pipe write failed");
+        return false;
+      }
+    } else if (!GetOverlappedResult(pipe, &operation, &written, TRUE)) {
+      SetError(error, L"named-pipe write completion failed");
       return false;
     }
     if (written == 0) {

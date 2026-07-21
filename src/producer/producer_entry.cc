@@ -32,6 +32,11 @@ void CloseProducer(void* context) {
   app->CloseBrowser();
 }
 
+void SetViewerVisible(void* context, bool visible) {
+  auto* app = static_cast<streaming::producer::ProducerApp*>(context);
+  app->SetViewerVisible(visible);
+}
+
 int RunMain(HINSTANCE instance,
             LPTSTR,
             int,
@@ -51,10 +56,18 @@ int RunMain(HINSTANCE instance,
     config.url = url;
   }
   config.force_transparency = command_line->HasSwitch("force-transparency");
+  config.viewer_visible = command_line->HasSwitch("visible");
 
   const DWORD main_thread_id = GetCurrentThreadId();
   CefRefPtr<streaming::producer::ProducerApp> app(
       new streaming::producer::ProducerApp(main_thread_id, config));
+
+  streaming::producer::LauncherWindow launcher;
+  if (!launcher.Create(instance, &CloseProducer, &SetViewerVisible, app.get(),
+                       config.viewer_visible)) {
+    return 3;
+  }
+  app->SetParentWindow(launcher.window());
 
   CefSettings settings;
   settings.multi_threaded_message_loop = true;
@@ -79,10 +92,6 @@ int RunMain(HINSTANCE instance,
     return CefGetExitCode();
   }
 
-  streaming::producer::LauncherWindow launcher;
-  if (!launcher.Create(instance, &CloseProducer, app.get())) {
-    app->CloseBrowser();
-  }
   const int result = launcher.RunMessageLoop();
 
   CefShutdown();

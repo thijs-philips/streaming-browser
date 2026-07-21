@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: transparent; font: 48px sans-serif; }
+  select { position: absolute; left: 300px; top: 300px; width: 1000px; height: 220px; padding: 24px; font: inherit; }
+  #state { margin: 80px; color: white; background: rgb(30 60 120 / 80%); padding: 30px; }
+</style>
+<select id="menu">
+  <option value="one">One</option>
+  <option value="two">Two</option>
+  <option value="three">Three</option>
+</select>
+<div id="state">Select popup fixture</div>
+<script>
+menu.addEventListener('mousedown', () => {
+  location.hash = 'mousedown';
+});
+menu.addEventListener('change', () => {
+  state.textContent = `selected:${menu.value}`;
+  location.hash = menu.value;
+});
+</script>

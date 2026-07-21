@@ -15,6 +15,7 @@
 #include "include/cef_render_handler.h"
 #include "include/cef_request_handler.h"
 #include "src/producer/d3d_frame_pipeline.h"
+#include "src/producer/stream_server.h"
 
 namespace streaming::producer {
 
@@ -27,7 +28,9 @@ class BrowserClient final : public CefClient,
                             public CefContextMenuHandler,
                             public CefJSDialogHandler {
  public:
-  BrowserClient(DWORD launcher_thread_id, bool force_transparency);
+  BrowserClient(DWORD launcher_thread_id,
+                bool force_transparency,
+                bool viewer_visible);
 
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -117,15 +120,28 @@ class BrowserClient final : public CefClient,
                             CefRefPtr<CefJSDialogCallback> callback) override;
 
   void CloseBrowser();
+  void SetViewerVisible(bool visible);
 
  private:
   void CloseBrowserOnUi();
+  void OnViewerReady();
+  void OnFrameReleased(std::uint32_t slot, std::uint64_t frame_id);
+  void OnViewerInput(protocol::InputEvent event);
+  void OnViewerCommand(protocol::MessageType type, std::string value);
+  void OnViewerDisconnected();
+  void PublishNavigationState();
 
   DWORD launcher_thread_id_ = 0;
   bool force_transparency_ = false;
+  bool viewer_visible_ = false;
   bool software_fallback_reported_ = false;
+  bool loading_ = false;
+  bool can_go_back_ = false;
+  bool can_go_forward_ = false;
+  std::string current_url_;
   CefRefPtr<CefBrowser> browser_;
   std::unique_ptr<D3DFramePipeline> pipeline_;
+  std::unique_ptr<StreamServer> stream_server_;
 
   IMPLEMENT_REFCOUNTING(BrowserClient);
   DISALLOW_COPY_AND_ASSIGN(BrowserClient);

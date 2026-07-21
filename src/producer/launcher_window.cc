@@ -19,9 +19,12 @@ LauncherWindow::~LauncherWindow() {
 
 bool LauncherWindow::Create(HINSTANCE instance,
                             CloseCallback close_callback,
-                            void* close_context) {
+                            VisibilityCallback visibility_callback,
+                            void* callback_context,
+                            bool initially_visible) {
   close_callback_ = close_callback;
-  close_context_ = close_context;
+  visibility_callback_ = visibility_callback;
+  callback_context_ = callback_context;
 
   WNDCLASSEXW window_class{sizeof(window_class)};
   window_class.lpfnWndProc = &LauncherWindow::WindowProc;
@@ -49,6 +52,13 @@ bool LauncherWindow::Create(HINSTANCE instance,
       L"Initializing CEF accelerated off-screen rendering…",
       WS_CHILD | WS_VISIBLE | SS_LEFT, 20, 24, 500, 72, window_, nullptr,
       instance, nullptr);
+  visible_checkbox_ = CreateWindowW(
+      L"BUTTON", L"Visible viewer", WS_CHILD | WS_VISIBLE | BS_AUTOCHECKBOX,
+      20, 108, 180, 24, window_, reinterpret_cast<HMENU>(
+                                      static_cast<INT_PTR>(1001)),
+      instance, nullptr);
+  SendMessageW(visible_checkbox_, BM_SETCHECK,
+               initially_visible ? BST_CHECKED : BST_UNCHECKED, 0);
   ShowWindow(window_, SW_SHOW);
   UpdateWindow(window_);
   return true;
@@ -76,6 +86,13 @@ int LauncherWindow::RunMessageLoop() {
     if (message.hwnd == nullptr && message.message == kCaptureFailureMessage) {
       SetWindowTextW(window_, L"Streaming Browser — accelerated capture failed");
       SetStatus(L"Accelerated CEF frame import/copy failed. See the debugger and CEF log.");
+      continue;
+    }
+    if (message.hwnd == nullptr && message.message == kStreamFrameMessage) {
+      const std::wstring frame = std::to_wstring(message.wParam);
+      const std::wstring title =
+          L"Streaming Browser — shared stream frame " + frame;
+      SetWindowTextW(window_, title.c_str());
       continue;
     }
     TranslateMessage(&message);
@@ -120,10 +137,18 @@ LRESULT LauncherWindow::HandleMessage(UINT message,
         SetStatus(L"Stopping browser and CEF subprocesses…");
         EnableWindow(window_, FALSE);
         if (close_callback_ != nullptr) {
-          close_callback_(close_context_);
+          close_callback_(callback_context_);
         } else {
           PostQuitMessage(0);
         }
+      }
+      return 0;
+    case WM_COMMAND:
+      if (LOWORD(wparam) == 1001 && HIWORD(wparam) == BN_CLICKED &&
+          visibility_callback_ != nullptr) {
+        const bool visible =
+            SendMessageW(visible_checkbox_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        visibility_callback_(callback_context_, visible);
       }
       return 0;
     case WM_DESTROY:

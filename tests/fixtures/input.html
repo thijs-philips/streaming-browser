@@ -1,0 +1,25 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>
+  html, body { margin: 0; width: 100%; height: 100%; background: transparent; font: 48px sans-serif; }
+  button, input { padding: 20px; font: inherit; }
+  #target { position: absolute; left: 300px; top: 300px; width: 700px; height: 220px; }
+  #text { position: absolute; left: 300px; top: 600px; width: 1000px; }
+  #state { margin: 40px; padding: 40px; color: white; background: rgb(20 40 80 / 80%); }
+</style>
+<button id="target">Click target</button>
+<input id="text" placeholder="Type here">
+<div id="state">waiting</div>
+<script>
+const state = document.getElementById('state');
+const target = document.getElementById('target');
+const text = document.getElementById('text');
+target.addEventListener('click', () => {
+  state.textContent = 'clicked';
+  location.hash = 'clicked';
+});
+text.addEventListener('input', () => {
+  state.textContent = `typed:${text.value}`;
+  location.hash = `typed-${encodeURIComponent(text.value)}`;
+});
+</script>

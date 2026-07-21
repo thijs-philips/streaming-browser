@@ -245,6 +245,125 @@ bool ParseFrameMetadata(std::span<const std::byte> bytes,
   return true;
 }
 
+std::vector<std::byte> SerializeRingDefinition(
+    const RingDefinition& definition) {
+  ByteWriter writer;
+  writer.WriteU32(definition.producer_process_id);
+  writer.WriteU32(definition.adapter_luid_low);
+  writer.WriteI32(definition.adapter_luid_high);
+  writer.WriteU32(definition.width);
+  writer.WriteU32(definition.height);
+  writer.WriteU32(definition.dxgi_format);
+  writer.WriteU32(definition.alpha_mode);
+  const auto count = static_cast<std::uint32_t>(
+      std::min<std::size_t>(definition.slots.size(), kMaxRingSlots));
+  writer.WriteU32(count);
+  for (std::uint32_t i = 0; i < count; ++i) {
+    writer.WriteU64(definition.slots[i].handle);
+  }
+  return writer.Take();
+}
+
+bool ParseRingDefinition(std::span<const std::byte> bytes,
+                         RingDefinition* definition,
+                         std::string* error) {
+  if (definition == nullptr) {
+    SetError(error, "null ring definition output");
+    return false;
+  }
+  ByteReader reader(bytes);
+  std::uint32_t slot_count = 0;
+  if (!reader.ReadU32(&definition->producer_process_id) ||
+      !reader.ReadU32(&definition->adapter_luid_low) ||
+      !reader.ReadI32(&definition->adapter_luid_high) ||
+      !reader.ReadU32(&definition->width) ||
+      !reader.ReadU32(&definition->height) ||
+      !reader.ReadU32(&definition->dxgi_format) ||
+      !reader.ReadU32(&definition->alpha_mode) ||
+      !reader.ReadU32(&slot_count)) {
+    SetError(error, "truncated ring definition");
+    return false;
+  }
+  if (slot_count == 0 || slot_count > kMaxRingSlots) {
+    SetError(error, "invalid ring slot count");
+    return false;
+  }
+  definition->slots.clear();
+  definition->slots.reserve(slot_count);
+  for (std::uint32_t i = 0; i < slot_count; ++i) {
+    RingSlotDefinition slot;
+    if (!reader.ReadU64(&slot.handle) || slot.handle == 0) {
+      SetError(error, "invalid ring slot handle");
+      return false;
+    }
+    definition->slots.push_back(slot);
+  }
+  if (!reader.empty()) {
+    SetError(error, "unexpected trailing ring definition data");
+    return false;
+  }
+  return true;
+}
+
+std::vector<std::byte> SerializeFrameRelease(const FrameRelease& release) {
+  ByteWriter writer;
+  writer.WriteU64(release.frame_id);
+  writer.WriteU32(release.slot);
+  return writer.Take();
+}
+
+bool ParseFrameRelease(std::span<const std::byte> bytes,
+                       FrameRelease* release,
+                       std::string* error) {
+  if (release == nullptr) {
+    SetError(error, "null frame release output");
+    return false;
+  }
+  ByteReader reader(bytes);
+  if (!reader.ReadU64(&release->frame_id) ||
+      !reader.ReadU32(&release->slot) || !reader.empty()) {
+    SetError(error, "invalid frame release");
+    return false;
+  }
+  return true;
+}
+
+std::vector<std::byte> SerializeInputEvent(const InputEvent& event) {
+  ByteWriter writer;
+  writer.WriteU16(static_cast<std::uint16_t>(event.kind));
+  writer.WriteU16(event.modifiers);
+  writer.WriteI32(event.x);
+  writer.WriteI32(event.y);
+  writer.WriteI32(event.value1);
+  writer.WriteI32(event.value2);
+  return writer.Take();
+}
+
+bool ParseInputEvent(std::span<const std::byte> bytes,
+                     InputEvent* event,
+                     std::string* error) {
+  if (event == nullptr) {
+    SetError(error, "null input event output");
+    return false;
+  }
+  ByteReader reader(bytes);
+  std::uint16_t kind = 0;
+  if (!reader.ReadU16(&kind) || !reader.ReadU16(&event->modifiers) ||
+      !reader.ReadI32(&event->x) || !reader.ReadI32(&event->y) ||
+      !reader.ReadI32(&event->value1) || !reader.ReadI32(&event->value2) ||
+      !reader.empty()) {
+    SetError(error, "invalid input event");
+    return false;
+  }
+  if (kind < static_cast<std::uint16_t>(InputKind::kMouseMove) ||
+      kind > static_cast<std::uint16_t>(InputKind::kCaptureLost)) {
+    SetError(error, "unknown input event kind");
+    return false;
+  }
+  event->kind = static_cast<InputKind>(kind);
+  return true;
+}
+
 bool IsCritical(MessageType type) {
   switch (type) {
     case MessageType::kRingDefinition:

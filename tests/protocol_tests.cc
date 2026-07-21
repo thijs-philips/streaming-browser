@@ -67,6 +67,42 @@ int main() {
     return Fail("critical message classification mismatch");
   }
 
+  RingDefinition ring;
+  ring.producer_process_id = 1234;
+  ring.adapter_luid_low = 17;
+  ring.adapter_luid_high = -2;
+  ring.dxgi_format = 87;
+  ring.slots = {{100}, {200}, {300}, {400}};
+  const auto ring_payload = SerializeRingDefinition(ring);
+  RingDefinition parsed_ring;
+  if (!ParseRingDefinition(ring_payload, &parsed_ring, &error) ||
+      parsed_ring.slots.size() != 4 || parsed_ring.slots[2].handle != 300 ||
+      parsed_ring.adapter_luid_high != -2) {
+    return Fail("ring definition round-trip mismatch");
+  }
+
+  FrameRelease release{55, 2};
+  const auto release_payload = SerializeFrameRelease(release);
+  FrameRelease parsed_release;
+  if (!ParseFrameRelease(release_payload, &parsed_release, &error) ||
+      parsed_release.frame_id != 55 || parsed_release.slot != 2) {
+    return Fail("frame release round-trip mismatch");
+  }
+
+  InputEvent input;
+  input.kind = InputKind::kMouseWheel;
+  input.modifiers = 3;
+  input.x = 100;
+  input.y = 200;
+  input.value2 = -120;
+  const auto input_payload = SerializeInputEvent(input);
+  InputEvent parsed_input;
+  if (!ParseInputEvent(input_payload, &parsed_input, &error) ||
+      parsed_input.kind != InputKind::kMouseWheel ||
+      parsed_input.value2 != -120) {
+    return Fail("input event round-trip mismatch");
+  }
+
   std::cout << "protocol tests passed\n";
   return 0;
 }

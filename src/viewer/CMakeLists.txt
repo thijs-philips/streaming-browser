@@ -5,6 +5,8 @@ set(CEF_TARGET_OUT_DIR "${VIEWER_OUTPUT_DIR}")
 add_executable(${VIEWER_TARGET} WIN32
   d3d_renderer.cc
   d3d_renderer.h
+  stream_client.cc
+  stream_client.h
   viewer_main.cc
 )
 
@@ -18,4 +20,5 @@ target_link_libraries(${VIEWER_TARGET} PRIVATE
   d3d11.lib
   dxgi.lib
   d3dcompiler.lib)
+target_link_libraries(${VIEWER_TARGET} PRIVATE shell32.lib)
 ADD_WINDOWS_MANIFEST("${CMAKE_CURRENT_SOURCE_DIR}/win" "${VIEWER_TARGET}" "exe")

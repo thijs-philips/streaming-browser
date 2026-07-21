@@ -11,6 +11,8 @@ set(PRODUCER_SOURCES
   launcher_window.cc
   launcher_window.h
   producer_entry.cc
+  stream_server.cc
+  stream_server.h
 )
 
 if(NOT TARGET libcef_lib)
@@ -48,6 +50,7 @@ target_link_libraries(${PRODUCER_TARGET} PRIVATE
   libcef_dll_wrapper
   ${CEF_STANDARD_LIBS}
   d3d11.lib
+  d3dcompiler.lib
   dxgi.lib
   shell32.lib)
 add_dependencies(${PRODUCER_TARGET} libcef_dll_wrapper)

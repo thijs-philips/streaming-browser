@@ -7,6 +7,22 @@
 #include "src/producer/launcher_window.h"
 
 namespace streaming::producer {
+namespace {
+
+class SetViewerVisibleTask final : public CefTask {
+ public:
+  SetViewerVisibleTask(CefRefPtr<BrowserClient> client, bool visible)
+      : client_(client), visible_(visible) {}
+
+  void Execute() override { client_->SetViewerVisible(visible_); }
+
+ private:
+  CefRefPtr<BrowserClient> client_;
+  bool visible_;
+  IMPLEMENT_REFCOUNTING(SetViewerVisibleTask);
+};
+
+}  // namespace
 
 ProducerApp::ProducerApp(DWORD launcher_thread_id, ProducerConfig config)
     : launcher_thread_id_(launcher_thread_id), config_(std::move(config)) {}
@@ -20,14 +36,15 @@ void ProducerApp::OnContextInitialized() {
   }
 
   CefRefPtr<BrowserClient> client =
-      new BrowserClient(launcher_thread_id_, config_.force_transparency);
+      new BrowserClient(launcher_thread_id_, config_.force_transparency,
+              config_.viewer_visible);
   {
     base::AutoLock lock(client_lock_);
     client_ = client;
   }
 
   CefWindowInfo window_info;
-  window_info.SetAsWindowless(nullptr);
+  window_info.SetAsWindowless(parent_window_);
   window_info.shared_texture_enabled = true;
   window_info.external_begin_frame_enabled = false;
 
@@ -62,6 +79,18 @@ void ProducerApp::CloseBrowser() {
     client->CloseBrowser();
   } else {
     PostThreadMessageW(launcher_thread_id_, WM_QUIT, 0, 0);
+  }
+}
+
+void ProducerApp::SetViewerVisible(bool visible) {
+  config_.viewer_visible = visible;
+  CefRefPtr<BrowserClient> client;
+  {
+    base::AutoLock lock(client_lock_);
+    client = client_;
+  }
+  if (client) {
+    CefPostTask(TID_UI, new SetViewerVisibleTask(client, visible));
   }
 }
 

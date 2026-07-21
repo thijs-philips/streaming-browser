@@ -12,4 +12,5 @@ $fixtureUrl = [System.Uri]::new($fixturePath).AbsoluteUri
 & (Join-Path $PSScriptRoot 'run-capture-spike.ps1') `
     -Configuration $Configuration `
     -Url $fixtureUrl `
-    -ForceTransparency
+    -ForceTransparency `
+    -Visible

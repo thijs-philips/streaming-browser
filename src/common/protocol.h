@@ -18,6 +18,7 @@ inline constexpr std::uint32_t kMaxPayloadSize = 1024U * 1024U;
 inline constexpr std::uint32_t kViewportWidth = 3840;
 inline constexpr std::uint32_t kViewportHeight = 2160;
 inline constexpr std::uint32_t kMaxDamageRects = 32;
+inline constexpr std::uint32_t kMaxRingSlots = 8;
 
 using SessionId = std::array<std::byte, 16>;
 
@@ -79,6 +80,48 @@ struct FrameMetadata {
   std::vector<Rect> damage;
 };
 
+struct RingSlotDefinition {
+  std::uint64_t handle = 0;
+};
+
+struct RingDefinition {
+  std::uint32_t producer_process_id = 0;
+  std::uint32_t adapter_luid_low = 0;
+  std::int32_t adapter_luid_high = 0;
+  std::uint32_t width = kViewportWidth;
+  std::uint32_t height = kViewportHeight;
+  std::uint32_t dxgi_format = 0;
+  std::uint32_t alpha_mode = 1;  // Premultiplied.
+  std::vector<RingSlotDefinition> slots;
+};
+
+struct FrameRelease {
+  std::uint64_t frame_id = 0;
+  std::uint32_t slot = 0;
+};
+
+enum class InputKind : std::uint16_t {
+  kMouseMove = 1,
+  kMouseLeave,
+  kMouseDown,
+  kMouseUp,
+  kMouseWheel,
+  kKeyDown,
+  kKeyUp,
+  kCharacter,
+  kFocus,
+  kCaptureLost,
+};
+
+struct InputEvent {
+  InputKind kind = InputKind::kMouseMove;
+  std::uint16_t modifiers = 0;
+  std::int32_t x = 0;
+  std::int32_t y = 0;
+  std::int32_t value1 = 0;
+  std::int32_t value2 = 0;
+};
+
 class ByteWriter final {
  public:
   void WriteU16(std::uint16_t value);
@@ -124,6 +167,22 @@ std::vector<std::byte> SerializeFrameMetadata(const FrameMetadata& metadata);
 bool ParseFrameMetadata(std::span<const std::byte> bytes,
                         FrameMetadata* metadata,
                         std::string* error);
+
+std::vector<std::byte> SerializeRingDefinition(
+  const RingDefinition& definition);
+bool ParseRingDefinition(std::span<const std::byte> bytes,
+             RingDefinition* definition,
+             std::string* error);
+
+std::vector<std::byte> SerializeFrameRelease(const FrameRelease& release);
+bool ParseFrameRelease(std::span<const std::byte> bytes,
+             FrameRelease* release,
+             std::string* error);
+
+std::vector<std::byte> SerializeInputEvent(const InputEvent& event);
+bool ParseInputEvent(std::span<const std::byte> bytes,
+           InputEvent* event,
+           std::string* error);
 
 bool IsCritical(MessageType type);
 

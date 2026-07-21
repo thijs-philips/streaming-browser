@@ -11,12 +11,20 @@
 - Debug and Release builds pass. Protocol unit tests pass.
 - Runtime capture spike reached accelerated frame 270 at 3840×2160 while the launcher stayed responsive.
 
-## Remaining work
+## 2026-07-21 — Phases 2 and 3
 
-1. Compose main view and `PET_POPUP` into final shared textures.
-2. Implement discovery/session pipes and handle duplication.
-3. Implement keyed-mutex shared-ring state machine and reconnect generations.
-4. Display producer frames in the viewer.
-5. Add browser toolbar, input forwarding, IME, visibility controls, and diagnostics.
-6. Expand unit/integration/end-to-end tests and run soak validation.
-7. Package a clean portable release and produce the final report.
+- Implemented a logon-SID-protected, local-only full-duplex named pipe using overlapped I/O.
+- Added process-verified NT handle duplication, adapter-LUID selection, keyed-mutex texture slots, and fresh rings on reconnect.
+- Added latest-frame publication, shared texture consumption, premultiplied-alpha checkerboard display, aspect-fit scaling, and local viewer copies.
+- Added viewer URL/Back/Forward/Reload/Stop controls, mouse/wheel/keyboard/focus forwarding, toolbar toggle, and producer-controlled viewer visibility.
+- Added main-view + `PET_POPUP` compositor code with premultiplied blending and clipped popup geometry.
+- Added protocol, IPC, continuous frame, navigation, mouse-input, and reconnect tests.
+- Debug E2E result: browser frames advanced in the viewer; viewer navigation reached CEF; viewer mouse click reached the test page; viewer kill/restart reconnected with a fresh shared ring.
+- Known pinned-build result: the HTML select received the test click, but CEF M150 on this machine emitted only popup-hide and no popup-show callback. This is reported as a capability warning; popup composition code remains active for callbacks that are delivered.
+
+## Remaining hardening
+
+1. Add basic IME commit/composition forwarding and cursor state display.
+2. Run Release unit/E2E and sustained soak tests with resource measurements.
+3. Add portable package generation and verify from a clean extracted directory.
+4. Produce final validation report and commit the remaining milestones.

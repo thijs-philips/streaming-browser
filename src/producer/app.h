@@ -14,6 +14,7 @@ namespace streaming::producer {
 struct ProducerConfig {
   std::string url = "https://example.com";
   bool force_transparency = false;
+  bool viewer_visible = false;
 };
 
 class ProducerApp final : public CefApp, public CefBrowserProcessHandler {
@@ -30,11 +31,14 @@ class ProducerApp final : public CefApp, public CefBrowserProcessHandler {
       const CefString& current_directory) override;
 
   void CloseBrowser();
+  void SetViewerVisible(bool visible);
+  void SetParentWindow(HWND window) { parent_window_ = window; }
 
  private:
   DWORD launcher_thread_id_ = 0;
   ProducerConfig config_;
   std::atomic_bool closing_ = false;
+  HWND parent_window_ = nullptr;
   base::Lock client_lock_;
   CefRefPtr<BrowserClient> client_;
 
