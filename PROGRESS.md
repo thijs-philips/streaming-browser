@@ -33,5 +33,5 @@
 - Final Release alpha probe passes.
 - Final soak: 120 seconds at 30.1 observed fps (3,618 frames), then a final 60-second run at 30.4 fps (1,825 frames). No runtime error diagnostics; processes remained responsive.
 - GPU budget on the validation machine: 5,234 MiB local budget, approximately 6 MiB used before workload allocation.
-- Portable sandboxed package validated from the package directory. Archive size: 183,529,598 bytes.
+- Portable sandboxed package validated from the package directory. Archive size: approximately 175 MiB.
 - Known limitation: the select control receives viewer input, but CEF M150 on this machine does not emit a popup-show callback. Popup composition remains implemented for delivered `PET_POPUP` callbacks.

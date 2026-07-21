@@ -51,7 +51,7 @@ The soak reported peak process working sets of approximately 130 MiB for the pro
 
 - Directory: `out/streaming-browser-0.1.0-windows-x64`
 - Archive: `out/streaming-browser-0.1.0-windows-x64.zip`
-- Archive size: 183,529,598 bytes
+- Archive size: approximately 175 MiB
 - Run `prepare-sandbox.ps1` after extraction, then `run-demo.ps1`.
 
 For development, run `scripts/run-demo.ps1` after building.
@@ -70,4 +70,4 @@ For development, run `scripts/run-demo.ps1` after building.
 
 - `1198c6c` — CEF accelerated capture spike.
 - `dc3b948` — shared D3D viewer and interactive transport.
-- Final hardening/report commit follows this report.
+- `b8e5a29` — final hardening, automated validation, packaging, and report.
