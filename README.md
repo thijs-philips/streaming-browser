@@ -92,15 +92,22 @@ The producer file controls URL, transparency, initial viewer visibility,
 alpha probing, viewport dimensions, and maximum frame rate. Unknown keys and
 invalid ranges are rejected rather than silently ignored.
 
-The viewer file controls startup navigation, window dimensions, and the UI:
+The viewer file controls startup navigation, scaling, window dimensions, and
+the UI:
 
 | Key | Effect |
 | --- | --- |
+| `scaling` | `client`: the producer renders its fixed viewport and the viewer scales the frame. `server`: the viewer reports its surface size, the headless browser resizes to match, and the page adapts responsively. |
 | `window.fullscreen` / `window.maximized` | Borderless F11-style presentation, or maximized with normal window chrome. Mutually exclusive. |
 | `window.show_toolbar` | Menu bar with the View pulldown. |
 | `window.show_url_bar` | Navigation row: back/forward, reload/stop, URL field, and Go. |
 | `window.url_bar_overlays_content` | `true` draws page pixels under the URL bar; `false` reserves a browser-like band above the page. |
 | `window.pixel_perfect` | 1:1 pixel mode instead of aspect-fit. |
+
+With server scaling, resize feedback flows viewer → producer over the control
+pipe; the producer resizes the CEF viewport, republishes a fresh texture ring,
+and the viewer reconnects to the new generation automatically. The producer's
+configured viewport is the starting size until a viewer reports one.
 
 For a viewer that behaves more like a conventional desktop browser, use the
 [`config/viewer.browser.yaml`](config/viewer.browser.yaml) preset (paired with

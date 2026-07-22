@@ -27,6 +27,8 @@ class StreamServer final {
   using ImeCallback = std::function<void(protocol::ImeEvent event)>;
   using CommandCallback = std::function<void(protocol::MessageType type,
                                              std::string value)>;
+  using ViewportCallback =
+      std::function<void(std::uint32_t width, std::uint32_t height)>;
   using DisconnectCallback = std::function<void()>;
 
   StreamServer(RingProvider ring_provider,
@@ -35,6 +37,7 @@ class StreamServer final {
                InputCallback input_callback,
                ImeCallback ime_callback,
                CommandCallback command_callback,
+               ViewportCallback viewport_callback,
                DisconnectCallback disconnect_callback);
   ~StreamServer();
 
@@ -51,6 +54,9 @@ class StreamServer final {
                            bool can_go_forward);
   bool SetViewerVisible(bool visible);
   bool SendCursorState(std::uint32_t cursor_type);
+  // Asks the connected viewer to drop the session and re-handshake so it
+  // picks up a regenerated ring (for example after a viewport resize).
+  bool ResetStream();
 
   [[nodiscard]] bool connected() const {
     return connected_.load(std::memory_order_acquire);
@@ -77,6 +83,7 @@ class StreamServer final {
   InputCallback input_callback_;
   ImeCallback ime_callback_;
   CommandCallback command_callback_;
+  ViewportCallback viewport_callback_;
   DisconnectCallback disconnect_callback_;
 
   std::atomic_bool stopping_ = false;

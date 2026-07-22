@@ -59,6 +59,10 @@ struct WindowState {
   bool url_editing = false;
   bool needs_render = true;
   bool initial_pixel_perfect = false;
+  bool server_scaling = false;
+  bool viewport_dirty = false;
+  std::uint32_t last_sent_viewport_width = 0;
+  std::uint32_t last_sent_viewport_height = 0;
   std::uint64_t last_title_frame = 0;
   std::string startup_navigation;
   HCURSOR page_cursor = LoadCursor(nullptr, IDC_ARROW);
@@ -247,6 +251,10 @@ bool LoadViewerConfiguration(int argument_count,
       configuration->pixel_perfect = true;
     } else if (argument == L"--fit") {
       configuration->pixel_perfect = false;
+    } else if (argument == L"--server-scaling") {
+      configuration->scaling = "server";
+    } else if (argument == L"--client-scaling") {
+      configuration->scaling = "client";
     } else if (argument == L"--fullscreen") {
       configuration->fullscreen = true;
       configuration->maximized = false;
@@ -260,6 +268,32 @@ bool LoadViewerConfiguration(int argument_count,
     }
   }
   return true;
+}
+
+void ReportViewportIfChanged(WindowState* state) {
+  if (!state->server_scaling || !state->client || !state->connected) {
+    return;
+  }
+  RECT surface{};
+  if (!GetClientRect(state->render_surface, &surface)) {
+    return;
+  }
+  const auto width = static_cast<std::uint32_t>(
+      std::clamp<LONG>(surface.right - surface.left, 320, 16384));
+  const auto height = static_cast<std::uint32_t>(
+      std::clamp<LONG>(surface.bottom - surface.top, 240, 16384));
+  if (width == state->last_sent_viewport_width &&
+      height == state->last_sent_viewport_height) {
+    return;
+  }
+  if (state->client->SendViewportSize(width, height)) {
+    state->last_sent_viewport_width = width;
+    state->last_sent_viewport_height = height;
+    streaming::Log(streaming::LogLevel::kInfo,
+                   L"Viewer requested server-side viewport " +
+                       std::to_wstring(width) + L"x" +
+                       std::to_wstring(height));
+  }
 }
 
 void SetUrlBarVisible(WindowState* state, bool visible) {
@@ -480,6 +514,12 @@ LRESULT CALLBACK WindowProc(HWND window,
             streaming::protocol::MessageType::kNavigate,
             std::exchange(state->startup_navigation, {}));
       }
+      if (state->connected) {
+        // A new session starts from the producer's own size; resend ours.
+        state->last_sent_viewport_width = 0;
+        state->last_sent_viewport_height = 0;
+        state->viewport_dirty = true;
+      }
       if (!state->connected) {
         SetWindowTextW(window,
                        L"Streaming Browser Viewer — waiting for producer");
@@ -579,9 +619,16 @@ LRESULT CALLBACK WindowProc(HWND window,
         MoveWindow(state->url, 146, 6, std::max(width - 200, 100), 26, TRUE);
         MoveWindow(state->go, std::max(width - 48, 146), 6, 42, 26, TRUE);
         state->needs_render = true;
+        state->viewport_dirty = true;
       }
       return 0;
     case WM_TIMER:
+      // Debounce server-side viewport reports to the timer tick so drag
+      // resizing does not flood the producer with browser resizes.
+      if (state->viewport_dirty) {
+        state->viewport_dirty = false;
+        ReportViewportIfChanged(state);
+      }
       // Only present when content actually changed; redundant 4K presents
       // cost measurable GPU and DWM composition time. A hidden window keeps
       // its dirty flag so the first visible frame is current.
@@ -759,6 +806,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
 
   auto state = std::make_unique<WindowState>();
   state->startup_navigation = configuration.navigate;
+  state->server_scaling = configuration.scaling == "server";
   state->menu_visible = configuration.show_toolbar;
   state->url_bar_visible = configuration.show_url_bar;
   state->url_bar_overlays_content = configuration.url_bar_overlays_content;

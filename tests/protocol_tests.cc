@@ -114,6 +114,18 @@ int main() {
     return Fail("IME event round-trip mismatch");
   }
 
+  ViewportSize viewport{2560, 1440};
+  const auto viewport_payload = SerializeViewportSize(viewport);
+  ViewportSize parsed_viewport;
+  if (!ParseViewportSize(viewport_payload, &parsed_viewport, &error) ||
+      parsed_viewport.width != 2560 || parsed_viewport.height != 1440) {
+    return Fail("viewport size round-trip mismatch");
+  }
+  if (ParseViewportSize(SerializeViewportSize({10, 10}), &parsed_viewport,
+                        &error)) {
+    return Fail("out-of-range viewport size was accepted");
+  }
+
   std::cout << "protocol tests passed\n";
   return 0;
 }

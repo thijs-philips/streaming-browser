@@ -48,6 +48,7 @@ class StreamClient final {
   bool SendInput(const protocol::InputEvent& event);
   bool SendIme(const protocol::ImeEvent& event);
   bool SendCommand(protocol::MessageType type, std::string value = {});
+  bool SendViewportSize(std::uint32_t width, std::uint32_t height);
 
  private:
   void ClientMain();

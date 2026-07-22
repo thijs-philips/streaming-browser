@@ -5,6 +5,8 @@
 
 # Keep empty to display the producer URL. Set this to navigate after connect.
 navigate: ""
+# A real browser reflows the page to its window, which is server scaling.
+scaling: server
 window:
   # Width and height are the restored size used after un-maximizing.
   width: 1440

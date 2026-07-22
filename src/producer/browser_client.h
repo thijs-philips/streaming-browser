@@ -129,6 +129,7 @@ class BrowserClient final : public CefClient,
   void OnViewerInput(protocol::InputEvent event);
   void OnViewerIme(protocol::ImeEvent event);
   void OnViewerCommand(protocol::MessageType type, std::string value);
+  void OnViewerViewport(std::uint32_t width, std::uint32_t height);
   void OnViewerDisconnected();
   void PublishNavigationState();
 

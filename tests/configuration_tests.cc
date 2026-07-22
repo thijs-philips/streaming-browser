@@ -41,6 +41,7 @@ frame_rate: 24
   streaming::ViewerConfiguration viewer;
   constexpr std::string_view viewer_yaml = R"YAML(
 navigate: https://example.org/controls
+scaling: server
 window:
   width: 1440
   height: 900
@@ -56,11 +57,18 @@ window:
     return 1;
   }
   if (viewer.navigate != "https://example.org/controls" ||
+      viewer.scaling != "server" ||
       viewer.window_width != 1440 || viewer.window_height != 900 ||
       viewer.show_toolbar || viewer.show_url_bar ||
       viewer.url_bar_overlays_content || !viewer.pixel_perfect ||
       !viewer.maximized || viewer.fullscreen) {
     return Fail("viewer YAML values did not parse");
+  }
+
+  if (streaming::ParseViewerConfigurationYaml("scaling: stretched\n", &viewer,
+                                              &error) ||
+      error.find("'client' or 'server'") == std::string::npos) {
+    return Fail("invalid scaling mode was not rejected");
   }
 
   if (streaming::ParseProducerConfigurationYaml("frame_rae: 30\n", &producer,
@@ -101,9 +109,9 @@ window:
   }
 
   if (!streaming::ParseViewerConfigurationYaml("{}", &viewer, &error) ||
-      viewer.window_width != 1280 || !viewer.show_toolbar ||
-      !viewer.show_url_bar || !viewer.url_bar_overlays_content ||
-      viewer.maximized) {
+      viewer.scaling != "client" || viewer.window_width != 1280 ||
+      !viewer.show_toolbar || !viewer.show_url_bar ||
+      !viewer.url_bar_overlays_content || viewer.maximized) {
     return Fail("empty viewer YAML did not preserve defaults");
   }
 

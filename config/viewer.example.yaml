@@ -5,6 +5,11 @@
 # Optional URL sent after the viewer connects. Leave empty to keep the
 # producer's URL.
 navigate: ""
+# client: the producer renders its fixed viewport and the viewer scales the
+#         frame to fit (everything gets smaller as the window shrinks).
+# server: the viewer reports its surface size and the headless browser
+#         resizes to match, letting the page adapt responsively.
+scaling: client
 window:
   width: 1280
   height: 760

@@ -127,8 +127,14 @@ bool D3DFramePipeline::CopyFromCef(
     } else if (source_desc.Width != view_desc_.Width ||
                source_desc.Height != view_desc_.Height ||
                source_desc.Format != view_desc_.Format) {
-      Log(LogLevel::kError, L"CEF view texture changed descriptor; a new stream generation is required");
-      return false;
+      // Server-side scaling: the browser viewport changed, so build fresh
+      // capture/output rings and hand the viewer a new generation.
+      Log(LogLevel::kInfo,
+          L"CEF view descriptor changed; creating a new stream generation");
+      ++generation_;
+      if (!CreateViewRing(source_desc)) {
+        return false;
+      }
     }
     slot = &view_slots_[next_view_slot_];
     latest_view_slot_ = next_view_slot_;

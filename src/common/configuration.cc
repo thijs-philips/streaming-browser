@@ -132,10 +132,17 @@ bool ParseViewer(const YAML::Node& node,
                  ViewerConfiguration* configuration,
                  std::string* error) {
   if (!RequireMap(node, "viewer configuration", error) ||
-      !RejectUnknownKeys(node, {"navigate", "window"}, "viewer", error) ||
+      !RejectUnknownKeys(node, {"navigate", "scaling", "window"}, "viewer",
+                         error) ||
       !ReadScalar(node, "navigate", "viewer", &configuration->navigate,
+                  error) ||
+      !ReadScalar(node, "scaling", "viewer", &configuration->scaling,
                   error)) {
     return false;
+  }
+  if (configuration->scaling != "client" &&
+      configuration->scaling != "server") {
+    return Fail("viewer.scaling must be 'client' or 'server'", error);
   }
 
   if (const YAML::Node window = node["window"]) {

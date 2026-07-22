@@ -12,7 +12,7 @@ namespace streaming::protocol {
 
 inline constexpr std::uint32_t kMagic = 0x53425257;  // "SB RW"
 inline constexpr std::uint16_t kProtocolMajor = 1;
-inline constexpr std::uint16_t kProtocolMinor = 0;
+inline constexpr std::uint16_t kProtocolMinor = 1;
 inline constexpr std::size_t kWireHeaderSize = 48;
 inline constexpr std::uint32_t kMaxPayloadSize = 1024U * 1024U;
 inline constexpr std::uint32_t kViewportWidth = 3840;
@@ -48,6 +48,7 @@ enum class MessageType : std::uint16_t {
   kStreamReset,
   kError,
   kShutdown,
+  kViewportSize,
 };
 
 struct MessageHeader {
@@ -99,6 +100,14 @@ struct RingDefinition {
 struct FrameRelease {
   std::uint64_t frame_id = 0;
   std::uint32_t slot = 0;
+};
+
+// Viewer-reported render-surface size used by server-side scaling. The
+// producer resizes the headless browser viewport to match, letting the page
+// adapt responsively instead of the viewer scaling a fixed-size frame.
+struct ViewportSize {
+  std::uint32_t width = kViewportWidth;
+  std::uint32_t height = kViewportHeight;
 };
 
 enum class InputKind : std::uint16_t {
@@ -196,6 +205,11 @@ std::vector<std::byte> SerializeInputEvent(const InputEvent& event);
 bool ParseInputEvent(std::span<const std::byte> bytes,
            InputEvent* event,
            std::string* error);
+
+std::vector<std::byte> SerializeViewportSize(const ViewportSize& size);
+bool ParseViewportSize(std::span<const std::byte> bytes,
+             ViewportSize* size,
+             std::string* error);
 
 std::vector<std::byte> SerializeImeEvent(const ImeEvent& event);
 bool ParseImeEvent(std::span<const std::byte> bytes,

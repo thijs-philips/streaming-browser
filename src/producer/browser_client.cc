@@ -45,6 +45,11 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
                     base::BindOnce(&BrowserClient::OnViewerCommand, this, type,
                                    std::move(value)));
       },
+      [this](std::uint32_t width, std::uint32_t height) {
+        CefPostTask(TID_UI,
+                    base::BindOnce(&BrowserClient::OnViewerViewport, this,
+                                   width, height));
+      },
       [this] {
         CefPostTask(
             TID_UI,
@@ -64,6 +69,11 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
       [this] {
         if (stream_server_) {
           stream_server_->NotifyRingReady();
+          // A ring regenerated while a viewer is attached (for example after
+          // a server-side viewport resize) requires a fresh handshake.
+          if (stream_server_->connected()) {
+            stream_server_->ResetStream();
+          }
         }
       },
       configuration.alpha_probe_enabled);
@@ -466,6 +476,24 @@ void BrowserClient::OnViewerIme(protocol::ImeEvent event) {
     case protocol::ImeKind::kCancel:
       host->ImeCancelComposition();
       break;
+  }
+}
+
+void BrowserClient::OnViewerViewport(std::uint32_t width,
+                                     std::uint32_t height) {
+  CEF_REQUIRE_UI_THREAD();
+  const int new_width = static_cast<int>(width);
+  const int new_height = static_cast<int>(height);
+  if (new_width == view_width_ && new_height == view_height_) {
+    return;
+  }
+  view_width_ = new_width;
+  view_height_ = new_height;
+  Log(LogLevel::kInfo,
+      L"Server-side scaling: resizing browser viewport to " +
+          std::to_wstring(new_width) + L"x" + std::to_wstring(new_height));
+  if (browser_ && browser_->IsValid()) {
+    browser_->GetHost()->WasResized();
   }
 }
 

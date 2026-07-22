@@ -413,6 +413,34 @@ bool ParseImeEvent(std::span<const std::byte> bytes,
   return true;
 }
 
+std::vector<std::byte> SerializeViewportSize(const ViewportSize& size) {
+  ByteWriter writer;
+  writer.WriteU32(size.width);
+  writer.WriteU32(size.height);
+  return writer.Take();
+}
+
+bool ParseViewportSize(std::span<const std::byte> bytes,
+                       ViewportSize* size,
+                       std::string* error) {
+  if (size == nullptr) {
+    SetError(error, "null viewport size output");
+    return false;
+  }
+  ByteReader reader(bytes);
+  if (!reader.ReadU32(&size->width) || !reader.ReadU32(&size->height) ||
+      !reader.empty()) {
+    SetError(error, "invalid viewport size");
+    return false;
+  }
+  if (size->width < 320 || size->width > 16384 || size->height < 240 ||
+      size->height > 16384) {
+    SetError(error, "viewport size out of range");
+    return false;
+  }
+  return true;
+}
+
 bool IsCritical(MessageType type) {
   switch (type) {
     case MessageType::kRingDefinition:

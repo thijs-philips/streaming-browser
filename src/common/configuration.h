@@ -18,6 +18,10 @@ struct ProducerConfiguration {
 
 struct ViewerConfiguration {
   std::string navigate;
+  // "client": producer renders a fixed viewport; the viewer scales the frame.
+  // "server": the viewer reports its surface size and the headless browser
+  // resizes to match, letting the page adapt responsively.
+  std::string scaling = "client";
   int window_width = 1280;
   int window_height = 760;
   // Menu bar with the View pulldown.

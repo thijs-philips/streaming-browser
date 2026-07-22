@@ -58,6 +58,7 @@ StreamServer::StreamServer(RingProvider ring_provider,
                            InputCallback input_callback,
                            ImeCallback ime_callback,
                            CommandCallback command_callback,
+                           ViewportCallback viewport_callback,
                            DisconnectCallback disconnect_callback)
     : ring_provider_(std::move(ring_provider)),
       ready_callback_(std::move(ready_callback)),
@@ -65,6 +66,7 @@ StreamServer::StreamServer(RingProvider ring_provider,
       input_callback_(std::move(input_callback)),
       ime_callback_(std::move(ime_callback)),
       command_callback_(std::move(command_callback)),
+      viewport_callback_(std::move(viewport_callback)),
       disconnect_callback_(std::move(disconnect_callback)),
       session_(CreateSessionId()) {
   ring_ready_event_ = CreateEventW(nullptr, TRUE, FALSE, nullptr);
@@ -148,6 +150,15 @@ bool StreamServer::SendCursorState(std::uint32_t cursor_type) {
   writer.WriteU32(cursor_type);
   return QueueMessage(protocol::MessageType::kCursorState, writer.Take(),
                       false);
+}
+
+bool StreamServer::ResetStream() {
+  if (!connected_.load(std::memory_order_acquire)) {
+    return true;
+  }
+  Log(LogLevel::kInfo,
+      L"Requesting viewer stream reset for a new ring generation");
+  return QueueMessage(protocol::MessageType::kStreamReset, {}, true);
 }
 
 void StreamServer::ServerMain() {
@@ -375,6 +386,16 @@ void StreamServer::ReaderMain(HANDLE pipe) {
           command_callback_(message.header.type, {});
         }
         break;
+      case protocol::MessageType::kViewportSize: {
+        protocol::ViewportSize size;
+        std::string parse_error;
+        if (protocol::ParseViewportSize(message.payload, &size,
+                                        &parse_error) &&
+            viewport_callback_) {
+          viewport_callback_(size.width, size.height);
+        }
+        break;
+      }
       case protocol::MessageType::kPing:
         QueueMessage(protocol::MessageType::kPong, {}, false);
         break;

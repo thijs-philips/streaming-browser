@@ -84,6 +84,12 @@ bool StreamClient::SendCommand(protocol::MessageType type, std::string value) {
   return Send(type, writer.Take());
 }
 
+bool StreamClient::SendViewportSize(std::uint32_t width,
+                                    std::uint32_t height) {
+  return Send(protocol::MessageType::kViewportSize,
+              protocol::SerializeViewportSize({width, height}));
+}
+
 void StreamClient::ClientMain() {
   while (!stopping_.load(std::memory_order_acquire)) {
     if (!ConnectAndRun() && !stopping_.load(std::memory_order_acquire)) {
