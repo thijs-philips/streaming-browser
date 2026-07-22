@@ -1,5 +1,5 @@
 <!-- markdownlint-disable-next-line MD041 -->
-![Streaming Browser: a transparent browser frame streaming GPU texture tiles into video, display, and data sinks](docs/assets/header.png)
+![Streaming Browser banner: a transparent browser frame streaming GPU texture tiles into video, display, and data sinks](docs/assets/header.png)
 
 # Streaming Browser
 
