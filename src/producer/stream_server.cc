@@ -257,15 +257,21 @@ bool StreamServer::PerformHandshake(HANDLE pipe, DWORD client_process_id) {
   std::wstring error;
   if (!ReadMessage(pipe, &hello, &error) ||
       hello.header.type != protocol::MessageType::kHello) {
+    Log(LogLevel::kError,
+        L"Handshake failed: expected Hello (" + error + L")");
     return false;
   }
 
   const DWORD ring_wait = WaitForSingleObject(ring_ready_event_, 15000);
   if (ring_wait != WAIT_OBJECT_0) {
+    Log(LogLevel::kError,
+        L"Handshake failed: shared texture ring was not ready within 15s");
     return false;
   }
   D3DFramePipeline::RingSnapshot snapshot;
   if (!ring_provider_ || !ring_provider_(&snapshot)) {
+    Log(LogLevel::kError,
+        L"Handshake failed: no ring snapshot available");
     return false;
   }
   generation_ = snapshot.generation;
@@ -274,6 +280,7 @@ bool StreamServer::PerformHandshake(HANDLE pipe, DWORD client_process_id) {
       PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZE,
       FALSE, client_process_id));
   if (!client_process) {
+    LogLastError(LogLevel::kError, L"Handshake OpenProcess(viewer)");
     return false;
   }
 
@@ -290,6 +297,8 @@ bool StreamServer::PerformHandshake(HANDLE pipe, DWORD client_process_id) {
     HANDLE remote_handle = nullptr;
     if (!DuplicateHandle(GetCurrentProcess(), local_handle, client_process.get(),
                          &remote_handle, 0, FALSE, DUPLICATE_SAME_ACCESS)) {
+      LogLastError(LogLevel::kError,
+                   L"Handshake DuplicateHandle(shared texture)");
       for (HANDLE duplicated : remote_handles) {
         CloseRemoteHandle(client_process.get(), duplicated);
       }
@@ -308,6 +317,8 @@ bool StreamServer::PerformHandshake(HANDLE pipe, DWORD client_process_id) {
   ring_header.session = session_;
   const auto payload = protocol::SerializeRingDefinition(definition);
   if (!WriteMessage(pipe, ring_header, payload, &error)) {
+    Log(LogLevel::kError,
+        L"Handshake failed writing ring definition: " + error);
     for (HANDLE duplicated : remote_handles) {
       CloseRemoteHandle(client_process.get(), duplicated);
     }
@@ -327,14 +338,25 @@ bool StreamServer::PerformHandshake(HANDLE pipe, DWORD client_process_id) {
 }
 
 void StreamServer::ReaderMain(HANDLE pipe) {
+  std::uint64_t stale_messages = 0;
   while (!stopping_.load(std::memory_order_acquire)) {
     ReceivedMessage message;
     std::wstring error;
     if (!ReadMessage(pipe, &message, &error)) {
+      if (!stopping_.load(std::memory_order_acquire)) {
+        Log(LogLevel::kInfo,
+            L"Viewer pipe read ended: " +
+                (error.empty() ? L"connection closed" : error));
+      }
       break;
     }
     if (message.header.session != session_ ||
         message.header.generation != generation_) {
+      // Expected briefly around stream resets; log only the first per session.
+      if (++stale_messages == 1) {
+        Log(LogLevel::kWarning,
+            L"Ignoring viewer message from a stale session/generation");
+      }
       continue;
     }
     switch (message.header.type) {
@@ -342,9 +364,12 @@ void StreamServer::ReaderMain(HANDLE pipe) {
         protocol::FrameRelease release;
         std::string parse_error;
         if (protocol::ParseFrameRelease(message.payload, &release,
-                                        &parse_error) &&
-            release_callback_) {
-          release_callback_(release.slot, release.frame_id);
+                                        &parse_error)) {
+          if (release_callback_) {
+            release_callback_(release.slot, release.frame_id);
+          }
+        } else {
+          Log(LogLevel::kError, L"Rejected malformed FrameReleased message");
         }
         break;
       }
@@ -390,9 +415,12 @@ void StreamServer::ReaderMain(HANDLE pipe) {
         protocol::ViewportSize size;
         std::string parse_error;
         if (protocol::ParseViewportSize(message.payload, &size,
-                                        &parse_error) &&
-            viewport_callback_) {
-          viewport_callback_(size.width, size.height);
+                                        &parse_error)) {
+          if (viewport_callback_) {
+            viewport_callback_(size.width, size.height);
+          }
+        } else {
+          Log(LogLevel::kError, L"Rejected malformed ViewportSize message");
         }
         break;
       }
