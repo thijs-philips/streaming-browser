@@ -1,3 +1,6 @@
+<!-- markdownlint-disable-next-line MD041 -->
+![Streaming Browser: a transparent browser frame streaming GPU texture tiles into video, display, and data sinks](docs/assets/header.png)
+
 # Streaming Browser
 
 **A GPU-first Chromium rendering and streaming foundation for transparent, interactive 4K browser surfaces.**
