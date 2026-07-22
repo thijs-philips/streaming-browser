@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Streaming Browser Feedback Test</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --value: 50;
+      --accent-hue: 195;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: transparent;
+      font-family: "Segoe UI", system-ui, sans-serif;
+    }
+
+    body {
+      display: grid;
+      place-items: center;
+      color: white;
+    }
+
+    .panel {
+      width: min(2400px, 82vw);
+      padding: 140px;
+      border: 4px solid rgb(255 255 255 / 22%);
+      border-radius: 72px;
+      background:
+        radial-gradient(circle at 15% 10%, hsl(var(--accent-hue) 95% 60% / 42%), transparent 35%),
+        linear-gradient(135deg, rgb(18 25 45 / 94%), rgb(8 12 24 / 88%));
+      box-shadow: 0 60px 180px rgb(0 0 0 / 55%);
+      backdrop-filter: blur(30px);
+    }
+
+    h1 {
+      margin: 0 0 34px;
+      font-size: 112px;
+      font-weight: 700;
+      letter-spacing: -4px;
+    }
+
+    .description {
+      margin: 0 0 90px;
+      color: rgb(255 255 255 / 72%);
+      font-size: 44px;
+      line-height: 1.45;
+    }
+
+    .readout {
+      display: flex;
+      align-items: baseline;
+      gap: 30px;
+      margin-bottom: 70px;
+    }
+
+    #value {
+      min-width: 260px;
+      font-size: 180px;
+      font-variant-numeric: tabular-nums;
+      font-weight: 750;
+      line-height: 1;
+      color: hsl(var(--accent-hue) 95% 72%);
+      text-shadow: 0 0 70px hsl(var(--accent-hue) 90% 55% / 55%);
+    }
+
+    .unit {
+      color: rgb(255 255 255 / 56%);
+      font-size: 56px;
+    }
+
+    input[type="range"] {
+      width: 100%;
+      height: 100px;
+      margin: 0;
+      cursor: grab;
+      accent-color: hsl(var(--accent-hue) 90% 56%);
+    }
+
+    input[type="range"]:active {
+      cursor: grabbing;
+    }
+
+    .meter {
+      height: 64px;
+      margin-top: 72px;
+      overflow: hidden;
+      border-radius: 999px;
+      background: rgb(255 255 255 / 10%);
+    }
+
+    #fill {
+      width: calc(var(--value) * 1%);
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg,
+        hsl(calc(var(--accent-hue) - 55) 90% 56%),
+        hsl(var(--accent-hue) 95% 62%));
+      box-shadow: 0 0 60px hsl(var(--accent-hue) 90% 55% / 65%);
+      transition: width 80ms linear;
+    }
+
+    .events {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 28px;
+      margin-top: 82px;
+    }
+
+    .event {
+      padding: 32px 38px;
+      border: 2px solid rgb(255 255 255 / 12%);
+      border-radius: 28px;
+      background: rgb(255 255 255 / 6%);
+      color: rgb(255 255 255 / 58%);
+      font-size: 32px;
+    }
+
+    .event strong {
+      display: block;
+      margin-top: 10px;
+      color: white;
+      font-size: 40px;
+      font-variant-numeric: tabular-nums;
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <h1>Interaction feedback test</h1>
+    <p class="description">
+      Drag the slider in the viewer. The value, colour, progress bar, and event
+      counters should update immediately through viewer → CEF → GPU stream → viewer.
+    </p>
+
+    <div class="readout">
+      <output id="value" for="slider">50</output>
+      <span class="unit">percent</span>
+    </div>
+
+    <input id="slider" type="range" min="0" max="100" value="50" step="1"
+           aria-label="Feedback value">
+    <div class="meter"><div id="fill"></div></div>
+
+    <section class="events" aria-label="Input diagnostics">
+      <div class="event">Pointer moves<strong id="moves">0</strong></div>
+      <div class="event">Input events<strong id="inputs">0</strong></div>
+      <div class="event">Last event<strong id="last">ready</strong></div>
+    </section>
+  </main>
+
+  <script>
+    const root = document.documentElement;
+    const slider = document.querySelector('#slider');
+    const value = document.querySelector('#value');
+    const moves = document.querySelector('#moves');
+    const inputs = document.querySelector('#inputs');
+    const last = document.querySelector('#last');
+
+    let moveCount = 0;
+    let inputCount = 0;
+
+    function update(eventName) {
+      const number = Number(slider.value);
+      value.value = String(number);
+      value.textContent = String(number);
+      root.style.setProperty('--value', number);
+      root.style.setProperty('--accent-hue', 8 + number * 2.35);
+      last.textContent = eventName;
+      document.title = `Feedback ${number}%`;
+      history.replaceState(null, '', `#value-${number}`);
+    }
+
+    slider.addEventListener('pointermove', event => {
+      if (event.buttons !== 0) {
+        moveCount += 1;
+        moves.textContent = String(moveCount);
+      }
+    });
+
+    slider.addEventListener('pointerdown', () => {
+      last.textContent = 'pointerdown';
+    });
+
+    slider.addEventListener('input', () => {
+      inputCount += 1;
+      inputs.textContent = String(inputCount);
+      update('input');
+    });
+
+    slider.addEventListener('change', () => update('change'));
+    update('ready');
+  </script>
+</body>
+</html>
