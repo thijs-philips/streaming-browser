@@ -22,6 +22,8 @@
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"StreamingBrowserViewerWindow";
+constexpr wchar_t kRenderSurfaceClass[] =
+  L"StreamingBrowserViewerRenderSurface";
 constexpr UINT kRingMessage = WM_APP + 1;
 constexpr UINT kFrameMessage = WM_APP + 2;
 constexpr UINT kNavigationMessage = WM_APP + 3;
@@ -39,6 +41,8 @@ constexpr int kTogglePixelPerfect = 201;
 
 struct WindowState {
   HWND window = nullptr;
+  HWND render_surface = nullptr;
+  HWND toolbar_background = nullptr;
   HWND back = nullptr;
   HWND forward = nullptr;
   HWND reload = nullptr;
@@ -77,7 +81,12 @@ bool PagePoint(WindowState* state, LPARAM lparam, int* x, int* y) {
   if (state->toolbar_visible && window_y < kToolbarHeight) {
     return false;
   }
-  return state->renderer.WindowToSource(window_x, window_y, x, y);
+  const int render_top =
+      state->toolbar_visible && !state->toolbar_overlays_content
+          ? kToolbarHeight
+          : 0;
+  return state->renderer.WindowToSource(window_x, window_y - render_top,
+                                        x, y);
 }
 
 void SendMouse(WindowState* state,
@@ -192,7 +201,6 @@ bool LoadViewerConfiguration(int argument_count,
                              LPWSTR* arguments,
                              streaming::ViewerConfiguration* configuration,
                              std::string* error) {
-  streaming::ApplicationConfiguration file_configuration;
   for (int i = 1; i < argument_count; ++i) {
     if (std::wstring_view(arguments[i]) == L"--config") {
       *error = "--config requires a YAML file path";
@@ -200,11 +208,10 @@ bool LoadViewerConfiguration(int argument_count,
     }
     std::wstring_view path;
     if (ArgumentValue(arguments[i], L"--config", &path)) {
-      if (!streaming::LoadConfigurationYaml(std::filesystem::path(path),
-                                             &file_configuration, error)) {
+      if (!streaming::LoadViewerConfigurationYaml(
+              std::filesystem::path(path), configuration, error)) {
         return false;
       }
-      *configuration = file_configuration.viewer;
       streaming::Log(streaming::LogLevel::kInfo,
                      L"Loaded viewer YAML configuration from " +
                          std::wstring(path));
@@ -252,6 +259,7 @@ bool LoadViewerConfiguration(int argument_count,
 void SetToolbarVisible(WindowState* state, bool visible) {
   state->toolbar_visible = visible;
   const int show = visible ? SW_SHOW : SW_HIDE;
+  ShowWindow(state->toolbar_background, show);
   ShowWindow(state->back, show);
   ShowWindow(state->forward, show);
   ShowWindow(state->reload, show);
@@ -259,8 +267,16 @@ void SetToolbarVisible(WindowState* state, bool visible) {
   ShowWindow(state->url, show);
   CheckMenuItem(GetMenu(state->window), kToggleToolbar,
                 MF_BYCOMMAND | (visible ? MF_CHECKED : MF_UNCHECKED));
-  state->renderer.SetContentTop(
-      visible && !state->toolbar_overlays_content ? kToolbarHeight : 0);
+  RECT client{};
+  GetClientRect(state->window, &client);
+  const int width = client.right - client.left;
+  const int height = client.bottom - client.top;
+  const int render_top =
+      visible && !state->toolbar_overlays_content ? kToolbarHeight : 0;
+  const int render_height = std::max(height - render_top, 1);
+  MoveWindow(state->render_surface, 0, render_top, width, render_height, TRUE);
+  state->renderer.Resize(static_cast<unsigned>(std::max(width, 1)),
+                         static_cast<unsigned>(render_height));
   state->needs_render = true;
 }
 
@@ -304,6 +320,9 @@ void CreateToolbar(WindowState* state, HINSTANCE instance) {
   SetMenu(state->window, menu);
   const DWORD control_style =
       WS_CHILD | (state->toolbar_visible ? WS_VISIBLE : 0);
+    state->toolbar_background = CreateWindowW(
+      L"STATIC", L"", control_style | SS_GRAYRECT,
+      0, 0, 1, kToolbarHeight, state->window, nullptr, instance, nullptr);
   state->back = CreateWindowW(L"BUTTON", L"←", control_style,
                               6, 6, 32, 26, state->window,
                                 reinterpret_cast<HMENU>(
@@ -333,6 +352,35 @@ void CreateToolbar(WindowState* state, HINSTANCE instance) {
   EnableWindow(state->forward, FALSE);
 }
 
+LRESULT CALLBACK RenderSurfaceProc(HWND window,
+                                   UINT message,
+                                   WPARAM wparam,
+                                   LPARAM lparam) {
+  HWND parent = GetParent(window);
+  switch (message) {
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP: {
+      POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+      MapWindowPoints(window, parent, &point, 1);
+      return SendMessageW(parent, message, wparam,
+                          MAKELPARAM(point.x, point.y));
+    }
+    case WM_MOUSEWHEEL:
+    case WM_SETCURSOR:
+      return SendMessageW(parent, message, wparam, lparam);
+    case WM_ERASEBKGND:
+      return 1;
+    default:
+      break;
+  }
+  return DefWindowProcW(window, message, wparam, lparam);
+}
+
 LRESULT CALLBACK WindowProc(HWND window,
                             UINT message,
                             WPARAM wparam,
@@ -346,12 +394,13 @@ LRESULT CALLBACK WindowProc(HWND window,
       state->window = window;
       SetWindowLongPtrW(window, GWLP_USERDATA,
                         reinterpret_cast<LONG_PTR>(state));
+      state->render_surface = CreateWindowExW(
+          0, kRenderSurfaceClass, L"",
+          WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+          0, 0, 1, 1, window, nullptr, create->hInstance, nullptr);
+      if (state->render_surface == nullptr) return -1;
       CreateToolbar(state, create->hInstance);
-      if (!state->renderer.Initialize(window)) return -1;
-        state->renderer.SetContentTop(
-          state->toolbar_visible && !state->toolbar_overlays_content
-            ? kToolbarHeight
-            : 0);
+      if (!state->renderer.Initialize(state->render_surface)) return -1;
       state->renderer.SetPixelPerfect(state->initial_pixel_perfect);
       SetTimer(window, 1, 16, nullptr);
       return 0;
@@ -496,8 +545,19 @@ LRESULT CALLBACK WindowProc(HWND window,
       return 0;
     case WM_SIZE:
       if (state != nullptr && wparam != SIZE_MINIMIZED) {
-        state->renderer.Resize(LOWORD(lparam), HIWORD(lparam));
         const int width = LOWORD(lparam);
+        const int height = HIWORD(lparam);
+        const int render_top =
+            state->toolbar_visible && !state->toolbar_overlays_content
+                ? kToolbarHeight
+                : 0;
+        const int render_height = std::max(height - render_top, 1);
+        MoveWindow(state->render_surface, 0, render_top, width,
+                   render_height, TRUE);
+        state->renderer.Resize(static_cast<unsigned>(std::max(width, 1)),
+                               static_cast<unsigned>(render_height));
+        MoveWindow(state->toolbar_background, 0, 0, width,
+                   kToolbarHeight, TRUE);
         MoveWindow(state->url, 146, 6, std::max(width - 200, 100), 26, TRUE);
         MoveWindow(state->go, std::max(width - 48, 146), 6, 42, 26, TRUE);
         state->needs_render = true;
@@ -524,22 +584,28 @@ LRESULT CALLBACK WindowProc(HWND window,
       return 0;
     case WM_LBUTTONDOWN:
       SetFocus(window);
+      SetCapture(window);
       SendMouse(state, streaming::protocol::InputKind::kMouseDown, lparam, 0, 1);
       return 0;
     case WM_LBUTTONUP:
       SendMouse(state, streaming::protocol::InputKind::kMouseUp, lparam, 0, 1);
+      ReleaseCapture();
       return 0;
     case WM_MBUTTONDOWN:
+      SetCapture(window);
       SendMouse(state, streaming::protocol::InputKind::kMouseDown, lparam, 1, 1);
       return 0;
     case WM_MBUTTONUP:
       SendMouse(state, streaming::protocol::InputKind::kMouseUp, lparam, 1, 1);
+      ReleaseCapture();
       return 0;
     case WM_RBUTTONDOWN:
+      SetCapture(window);
       SendMouse(state, streaming::protocol::InputKind::kMouseDown, lparam, 2, 1);
       return 0;
     case WM_RBUTTONUP:
       SendMouse(state, streaming::protocol::InputKind::kMouseUp, lparam, 2, 1);
+      ReleaseCapture();
       return 0;
     case WM_MOUSEWHEEL: {
       POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
@@ -661,6 +727,13 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
   window_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
   window_class.lpszClassName = kWindowClass;
   if (RegisterClassExW(&window_class) == 0) return 1;
+
+  WNDCLASSEXW render_surface_class{sizeof(render_surface_class)};
+  render_surface_class.lpfnWndProc = &RenderSurfaceProc;
+  render_surface_class.hInstance = instance;
+  render_surface_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
+  render_surface_class.lpszClassName = kRenderSurfaceClass;
+  if (RegisterClassExW(&render_surface_class) == 0) return 1;
 
   auto state = std::make_unique<WindowState>();
   state->startup_navigation = configuration.navigate;

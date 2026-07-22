@@ -85,7 +85,7 @@ bool ValidateRange(int value,
 bool ParseProducer(const YAML::Node& node,
                    ProducerConfiguration* configuration,
                    std::string* error) {
-  if (!RequireMap(node, "producer", error) ||
+  if (!RequireMap(node, "producer configuration", error) ||
       !RejectUnknownKeys(node,
                          {"url", "force_transparency", "viewer_visible",
                           "alpha_probe_enabled", "viewport", "frame_rate"},
@@ -131,7 +131,7 @@ bool ParseProducer(const YAML::Node& node,
 bool ParseViewer(const YAML::Node& node,
                  ViewerConfiguration* configuration,
                  std::string* error) {
-  if (!RequireMap(node, "viewer", error) ||
+  if (!RequireMap(node, "viewer configuration", error) ||
       !RejectUnknownKeys(node, {"navigate", "window"}, "viewer", error) ||
       !ReadScalar(node, "navigate", "viewer", &configuration->navigate,
                   error)) {
@@ -174,39 +174,19 @@ bool ParseViewer(const YAML::Node& node,
                        "viewer.window.height", error);
 }
 
-bool ParseRoot(const YAML::Node& root,
-               ApplicationConfiguration* configuration,
-               std::string* error) {
-  if (!RequireMap(root, "configuration root", error) ||
-      !RejectUnknownKeys(root, {"producer", "viewer"},
-                         "configuration root", error)) {
-    return false;
-  }
-  if (const YAML::Node producer = root["producer"]) {
-    if (!ParseProducer(producer, &configuration->producer, error)) {
-      return false;
-    }
-  }
-  if (const YAML::Node viewer = root["viewer"]) {
-    if (!ParseViewer(viewer, &configuration->viewer, error)) {
-      return false;
-    }
-  }
-  return true;
-}
-
-}  // namespace
-
-bool ParseConfigurationYaml(std::string_view yaml,
-                            ApplicationConfiguration* configuration,
-                            std::string* error) {
+template <typename Configuration>
+bool ParseWithRoot(std::string_view yaml,
+                   bool (*parse_root)(const YAML::Node&, Configuration*,
+                                      std::string*),
+                   Configuration* configuration,
+                   std::string* error) {
   if (configuration == nullptr) {
     return Fail("configuration output is null", error);
   }
   try {
     const YAML::Node root = YAML::Load(std::string(yaml));
-    ApplicationConfiguration parsed;
-    if (!ParseRoot(root, &parsed, error)) {
+    Configuration parsed;
+    if (!parse_root(root, &parsed, error)) {
       return false;
     }
     *configuration = std::move(parsed);
@@ -216,9 +196,12 @@ bool ParseConfigurationYaml(std::string_view yaml,
   }
 }
 
-bool LoadConfigurationYaml(const std::filesystem::path& path,
-                           ApplicationConfiguration* configuration,
-                           std::string* error) {
+template <typename Configuration>
+bool LoadWithParser(const std::filesystem::path& path,
+                    bool (*parse_yaml)(std::string_view, Configuration*,
+                                       std::string*),
+                    Configuration* configuration,
+                    std::string* error) {
   std::ifstream stream(path, std::ios::binary);
   if (!stream) {
     return Fail("could not open configuration file: " + path.string(), error);
@@ -228,13 +211,41 @@ bool LoadConfigurationYaml(const std::filesystem::path& path,
   if (!stream.good() && !stream.eof()) {
     return Fail("could not read configuration file: " + path.string(), error);
   }
-  if (!ParseConfigurationYaml(contents.str(), configuration, error)) {
+  if (!parse_yaml(contents.str(), configuration, error)) {
     if (error != nullptr) {
       *error = path.string() + ": " + *error;
     }
     return false;
   }
   return true;
+}
+
+}  // namespace
+
+bool ParseProducerConfigurationYaml(std::string_view yaml,
+                                    ProducerConfiguration* configuration,
+                                    std::string* error) {
+  return ParseWithRoot(yaml, &ParseProducer, configuration, error);
+}
+
+bool LoadProducerConfigurationYaml(const std::filesystem::path& path,
+                                   ProducerConfiguration* configuration,
+                                   std::string* error) {
+  return LoadWithParser(path, &ParseProducerConfigurationYaml, configuration,
+                        error);
+}
+
+bool ParseViewerConfigurationYaml(std::string_view yaml,
+                                  ViewerConfiguration* configuration,
+                                  std::string* error) {
+  return ParseWithRoot(yaml, &ParseViewer, configuration, error);
+}
+
+bool LoadViewerConfigurationYaml(const std::filesystem::path& path,
+                                 ViewerConfiguration* configuration,
+                                 std::string* error) {
+  return LoadWithParser(path, &ParseViewerConfigurationYaml, configuration,
+                        error);
 }
 
 }  // namespace streaming

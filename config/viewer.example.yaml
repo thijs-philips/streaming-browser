@@ -1,0 +1,17 @@
+# Configuration for streaming_viewer.exe (the default D3D11 viewer sink).
+# Launch with: streaming_viewer.exe --config=<path-to-this-file>
+# Command-line switches override values loaded from this file.
+
+# Optional URL sent after the viewer connects. Leave empty to keep the
+# producer's URL.
+navigate: ""
+window:
+  width: 1280
+  height: 760
+  toolbar_visible: true
+  # true preserves the original overlay layout; false reserves a browser-like
+  # toolbar band above the rendered page.
+  toolbar_overlays_content: true
+  pixel_perfect: false
+  maximized: false
+  fullscreen: false

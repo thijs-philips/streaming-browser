@@ -71,31 +71,37 @@ viewer input → local IPC → CEF → webpage update → GPU frame → viewer
 
 ### Configure with YAML
 
-The producer and viewer can read the same YAML file. Start from
-[`streaming-browser.example.yaml`](streaming-browser.example.yaml), edit it,
-then run:
+The producer and viewer are separate applications, and each has its own YAML
+configuration file in [`config/`](config/):
+
+- [`config/producer.example.yaml`](config/producer.example.yaml) — settings for `streaming_browser.exe`
+- [`config/viewer.example.yaml`](config/viewer.example.yaml) — settings for `streaming_viewer.exe`
 
 ```powershell
 .\scripts\run-config-demo.ps1 -Configuration Release `
-    -Config .\streaming-browser.example.yaml
+    -ProducerConfig .\config\producer.example.yaml `
+    -ViewerConfig .\config\viewer.example.yaml
 ```
 
-Or launch the executables separately with `--config=<path>`. Each executable
-reads its own top-level section (`producer` or `viewer`). Command-line switches
-are applied afterward and therefore override YAML values.
+Or launch the executables separately with `--config=<path>`. Keeping the files
+separate means a different viewer/sink can define its own configuration format
+without touching the producer's. Command-line switches are applied after the
+YAML file and therefore override it.
 
-The producer section controls URL, transparency, initial viewer visibility,
-alpha probing, viewport dimensions, and maximum frame rate. The viewer section
+The producer file controls URL, transparency, initial viewer visibility,
+alpha probing, viewport dimensions, and maximum frame rate. The viewer file
 controls startup navigation, window dimensions, toolbar visibility, 1:1 mode,
 and fullscreen mode. Unknown keys and invalid ranges are rejected rather than
 silently ignored.
 
 For a viewer that behaves more like a conventional desktop browser, use the
-separate [`browser-viewer.conf.yml`](browser-viewer.conf.yml) preset:
+[`config/viewer.browser.yaml`](config/viewer.browser.yaml) preset (paired with
+[`config/producer.browser.yaml`](config/producer.browser.yaml)):
 
 ```powershell
 .\scripts\run-config-demo.ps1 -Configuration Release `
-    -Config .\browser-viewer.conf.yml
+    -ProducerConfig .\config\producer.browser.yaml `
+    -ViewerConfig .\config\viewer.browser.yaml
 ```
 
 This preset keeps the navigation toolbar visible, reserves its space above the

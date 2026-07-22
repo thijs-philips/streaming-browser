@@ -27,19 +27,23 @@ struct ViewerConfiguration {
   bool fullscreen = false;
 };
 
-struct ApplicationConfiguration {
-  ProducerConfiguration producer;
-  ViewerConfiguration viewer;
-};
+// Each application owns its own configuration file with its settings at the
+// document root. Parsers are strict: unknown keys are rejected so misspelled
+// settings cannot silently fall back to defaults.
+bool ParseProducerConfigurationYaml(std::string_view yaml,
+                                    ProducerConfiguration* configuration,
+                                    std::string* error);
 
-// Parse a strict, bounded YAML configuration. Unknown keys are rejected so
-// misspelled settings cannot silently fall back to defaults.
-bool ParseConfigurationYaml(std::string_view yaml,
-                            ApplicationConfiguration* configuration,
-                            std::string* error);
+bool LoadProducerConfigurationYaml(const std::filesystem::path& path,
+                                   ProducerConfiguration* configuration,
+                                   std::string* error);
 
-bool LoadConfigurationYaml(const std::filesystem::path& path,
-                           ApplicationConfiguration* configuration,
-                           std::string* error);
+bool ParseViewerConfigurationYaml(std::string_view yaml,
+                                  ViewerConfiguration* configuration,
+                                  std::string* error);
+
+bool LoadViewerConfigurationYaml(const std::filesystem::path& path,
+                                 ViewerConfiguration* configuration,
+                                 std::string* error);
 
 }  // namespace streaming

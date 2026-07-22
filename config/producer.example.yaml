@@ -1,0 +1,13 @@
+# Configuration for streaming_browser.exe (the producer).
+# Launch with: streaming_browser.exe --config=<path-to-this-file>
+# Command-line switches override values loaded from this file.
+
+url: https://example.com
+force_transparency: true
+viewer_visible: true
+alpha_probe_enabled: false
+viewport:
+  width: 3840
+  height: 2160
+# CEF treats this as a maximum; change-driven pages may produce fewer frames.
+frame_rate: 30

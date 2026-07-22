@@ -31,8 +31,8 @@ Copy-Item (Join-Path $cefRoot 'CREDITS.html') $package
 Copy-Item $yamlCppLicense (Join-Path $package 'YAML_CPP_LICENSE.txt')
 Copy-Item (Join-Path $root 'PROGRESS.md') $package
 Copy-Item (Join-Path $root 'FINAL_REPORT.md') $package
-Copy-Item (Join-Path $root 'streaming-browser.example.yaml') $package
-Copy-Item (Join-Path $root 'browser-viewer.conf.yml') $package
+New-Item -ItemType Directory -Path (Join-Path $package 'config') -Force | Out-Null
+Copy-Item (Join-Path $root 'config\*.yaml') (Join-Path $package 'config')
 New-Item -ItemType Directory -Path (Join-Path $package 'fixtures') -Force | Out-Null
 Copy-Item (Join-Path $root 'tests\fixtures\*.html') (Join-Path $package 'fixtures')
 
@@ -57,22 +57,41 @@ Start-Process (Join-Path $PSScriptRoot 'streaming_viewer.exe') `
 '@ | Set-Content (Join-Path $package 'run-demo.ps1') -Encoding UTF8
 
 @'
-[CmdletBinding()]
-param([string]$Config = 'streaming-browser.example.yaml')
 $ErrorActionPreference = 'Stop'
-$configPath = if ([IO.Path]::IsPathRooted($Config)) {
-    (Resolve-Path $Config).Path
-} else {
-    (Resolve-Path (Join-Path $PSScriptRoot $Config)).Path
-}
+$fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures\viewport-manager.html')).Path
+$url = [Uri]::new($fixture).AbsoluteUri
 Get-Process streaming_browser, streaming_viewer -ErrorAction SilentlyContinue |
     Stop-Process -Force -ErrorAction SilentlyContinue
 Start-Process (Join-Path $PSScriptRoot 'streaming_browser.exe') `
     -WorkingDirectory $PSScriptRoot `
-    -ArgumentList "--config=`"$configPath`""
+    -ArgumentList @("--url=$url", '--visible')
 Start-Process (Join-Path $PSScriptRoot 'streaming_viewer.exe') `
     -WorkingDirectory $PSScriptRoot `
-    -ArgumentList "--config=`"$configPath`""
+    -ArgumentList @('--no-toolbar', '--content-below-toolbar', '--fit')
+Write-Host 'Viewport manager started. Drag any internal divider to resize adjacent viewports.'
+'@ | Set-Content (Join-Path $package 'run-viewport-manager.ps1') -Encoding UTF8
+
+@'
+[CmdletBinding()]
+param(
+    [string]$ProducerConfig = 'config\producer.example.yaml',
+    [string]$ViewerConfig = 'config\viewer.example.yaml'
+)
+$ErrorActionPreference = 'Stop'
+function Resolve-ConfigPath([string]$Path) {
+    if ([IO.Path]::IsPathRooted($Path)) { return (Resolve-Path $Path).Path }
+    return (Resolve-Path (Join-Path $PSScriptRoot $Path)).Path
+}
+$producerConfigPath = Resolve-ConfigPath $ProducerConfig
+$viewerConfigPath = Resolve-ConfigPath $ViewerConfig
+Get-Process streaming_browser, streaming_viewer -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Process (Join-Path $PSScriptRoot 'streaming_browser.exe') `
+    -WorkingDirectory $PSScriptRoot `
+    -ArgumentList "--config=`"$producerConfigPath`""
+Start-Process (Join-Path $PSScriptRoot 'streaming_viewer.exe') `
+    -WorkingDirectory $PSScriptRoot `
+    -ArgumentList "--config=`"$viewerConfigPath`""
 '@ | Set-Content (Join-Path $package 'run-config-demo.ps1') -Encoding UTF8
 
 & (Join-Path $package 'prepare-sandbox.ps1')

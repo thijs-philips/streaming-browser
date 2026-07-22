@@ -99,14 +99,13 @@ int RunMain(HINSTANCE instance,
   CefRefPtr<CefCommandLine> command_line = CefCommandLine::CreateCommandLine();
   command_line->InitFromString(GetCommandLineW());
 
-  streaming::ApplicationConfiguration file_configuration;
   streaming::ProducerConfiguration config;
   std::string configuration_error;
   if (command_line->HasSwitch("config")) {
     const std::wstring path = command_line->GetSwitchValue("config").ToWString();
     if (path.empty() ||
-        !streaming::LoadConfigurationYaml(path, &file_configuration,
-                                          &configuration_error)) {
+        !streaming::LoadProducerConfigurationYaml(path, &config,
+                                                  &configuration_error)) {
       if (path.empty()) {
         configuration_error = "--config requires a YAML file path";
       }
@@ -118,7 +117,6 @@ int RunMain(HINSTANCE instance,
                   MB_OK | MB_ICONERROR);
       return 4;
     }
-    config = file_configuration.producer;
     streaming::Log(streaming::LogLevel::kInfo,
                    L"Loaded producer YAML configuration from " + path);
   }
