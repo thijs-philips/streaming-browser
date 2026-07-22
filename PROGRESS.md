@@ -43,3 +43,11 @@
 - Root cause: `PublishLatest()` was invoked both on every new CEF frame and from `ReleaseOutputSlot()` on every viewer release. Because publication always republished `latest_metadata_` even when that frame ID had already been sent, each release triggered a new publication of the same frame, whose release triggered another, saturating all four keyed-mutex slots with duplicate 4K copies + pipe messages. The loop amplified until GPU/pipe queues backed up, which surfaced as growing input-to-photon latency.
 - Fix: track `published_frame_id_` in `D3DFramePipeline` and skip publication when `latest_metadata_.frame_id` has already been delivered; reset it whenever a fresh output ring/generation is created so reconnects still receive the latest frame.
 - Validated: ~30 msgs/sec after the fix, viewer CPU 0.19 s over the same window, unit + IPC + E2E tests pass, and a 90 s Release soak held 30.0 fps (producer peak 153 MiB, viewer peak 68 MiB).
+
+## 2026-07-22 — Idle CPU/GPU reduction in the viewer
+
+- Profiled per-process GPU engine counters and CPU deltas with the animated stress page: viewer GPU was the largest app consumer after DWM, and per-frame `SetWindowText` title updates forced non-client repaints 30×/sec.
+- Change 1: the viewer 16 ms timer now presents only when a new frame arrived or the view changed (dirty flag covers frames, resize, pan, 1:1 toggle, ring reopen, visibility restore); `WM_PAINT` still renders on demand so occlusion/uncover stays correct.
+- Change 2: title-bar frame counter updates are throttled to ~1 Hz (every 30th frame), preserving the `frame N` pattern the E2E/soak scripts poll.
+- Change 3: a hidden viewer window skips presents entirely and re-renders on the next show.
+- Result: static-page idle now measures 0.00 viewer CPU-seconds per 10 s and no measurable viewer GPU engine utilization; animated 4K page still holds 30.0 fps in a 60 s soak and E2E passes.

@@ -47,6 +47,8 @@ struct WindowState {
   bool toolbar_visible = true;
   bool updating_url = false;
   bool url_editing = false;
+  bool needs_render = true;
+  std::uint64_t last_title_frame = 0;
   std::string startup_navigation;
   HCURSOR page_cursor = LoadCursor(nullptr, IDC_ARROW);
   bool fullscreen = false;
@@ -188,6 +190,8 @@ LRESULT CALLBACK WindowProc(HWND window,
           reinterpret_cast<streaming::protocol::RingDefinition*>(lparam));
       const bool opened = state->renderer.OpenRing(*definition);
       state->client->AcceptRing(opened);
+      state->needs_render = true;
+      state->last_title_frame = 0;
       SetWindowTextW(window, opened ? L"Streaming Browser Viewer — connected"
                                     : L"Streaming Browser Viewer — ring failed");
       return 0;
@@ -197,9 +201,15 @@ LRESULT CALLBACK WindowProc(HWND window,
           reinterpret_cast<streaming::protocol::FrameMetadata*>(lparam));
       if (state->renderer.ConsumeFrame(*metadata)) {
         state->client->ReleaseFrame(metadata->slot, metadata->frame_id);
-        const std::wstring title = L"Streaming Browser Viewer — frame " +
-                                   std::to_wstring(metadata->frame_id);
-        SetWindowTextW(window, title.c_str());
+        state->needs_render = true;
+        // SetWindowText forces a non-client repaint; throttle to ~1 Hz.
+        if (metadata->frame_id == 1 ||
+            metadata->frame_id >= state->last_title_frame + 30) {
+          state->last_title_frame = metadata->frame_id;
+          const std::wstring title = L"Streaming Browser Viewer — frame " +
+                                     std::to_wstring(metadata->frame_id);
+          SetWindowTextW(window, title.c_str());
+        }
       } else {
         const std::wstring title =
             L"Streaming Browser Viewer — frame consume failed " +
@@ -242,6 +252,9 @@ LRESULT CALLBACK WindowProc(HWND window,
       return 0;
     case kVisibilityMessage:
       ShowWindow(window, wparam != 0 ? SW_SHOW : SW_HIDE);
+      if (wparam != 0) {
+        state->needs_render = true;
+      }
       return 0;
     case kCursorMessage: {
       LPCWSTR cursor_id = IDC_ARROW;
@@ -283,6 +296,7 @@ LRESULT CALLBACK WindowProc(HWND window,
       }
       if (LOWORD(wparam) == kTogglePixelPerfect) {
         state->renderer.SetPixelPerfect(!state->renderer.pixel_perfect());
+        state->needs_render = true;
         CheckMenuItem(
             GetMenu(window), kTogglePixelPerfect,
             MF_BYCOMMAND |
@@ -324,11 +338,25 @@ LRESULT CALLBACK WindowProc(HWND window,
         const int width = LOWORD(lparam);
         MoveWindow(state->url, 146, 6, std::max(width - 200, 100), 26, TRUE);
         MoveWindow(state->go, std::max(width - 48, 146), 6, 42, 26, TRUE);
+        state->needs_render = true;
       }
       return 0;
     case WM_TIMER:
+      // Only present when content actually changed; redundant 4K presents
+      // cost measurable GPU and DWM composition time. A hidden window keeps
+      // its dirty flag so the first visible frame is current.
+      if (state->needs_render && IsWindowVisible(window)) {
+        state->needs_render = false;
+        state->renderer.Render();
+      }
+      return 0;
+    case WM_PAINT: {
+      PAINTSTRUCT paint{};
+      BeginPaint(window, &paint);
+      EndPaint(window, &paint);
       state->renderer.Render();
       return 0;
+    }
     case WM_MOUSEMOVE:
       SendMouse(state, streaming::protocol::InputKind::kMouseMove, lparam);
       return 0;
@@ -398,10 +426,22 @@ LRESULT CALLBACK WindowProc(HWND window,
       if (message == WM_KEYDOWN && state->renderer.pixel_perfect() &&
           GetKeyState(VK_CONTROL) < 0) {
         switch (wparam) {
-          case VK_LEFT: state->renderer.Pan(64.0F, 0.0F); return 0;
-          case VK_RIGHT: state->renderer.Pan(-64.0F, 0.0F); return 0;
-          case VK_UP: state->renderer.Pan(0.0F, 64.0F); return 0;
-          case VK_DOWN: state->renderer.Pan(0.0F, -64.0F); return 0;
+          case VK_LEFT:
+            state->renderer.Pan(64.0F, 0.0F);
+            state->needs_render = true;
+            return 0;
+          case VK_RIGHT:
+            state->renderer.Pan(-64.0F, 0.0F);
+            state->needs_render = true;
+            return 0;
+          case VK_UP:
+            state->renderer.Pan(0.0F, 64.0F);
+            state->needs_render = true;
+            return 0;
+          case VK_DOWN:
+            state->renderer.Pan(0.0F, -64.0F);
+            state->needs_render = true;
+            return 0;
         }
       }
       if (state->client && state->connected && GetFocus() == window) {
