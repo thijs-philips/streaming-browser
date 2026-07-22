@@ -443,6 +443,9 @@ bool D3DFramePipeline::CreateOutputRing(
     std::lock_guard lock(ring_mutex_);
     output_slots_ = std::move(new_slots);
   }
+  // A fresh ring (new generation/session) must republish the latest frame
+  // even if its ID was already delivered to a previous viewer session.
+  published_frame_id_ = 0;
   return true;
 }
 
@@ -510,6 +513,11 @@ bool D3DFramePipeline::PublishLatest() {
       !publish_callback_) {
     return true;
   }
+  if (latest_metadata_.frame_id <= published_frame_id_) {
+    // The latest frame already reached the viewer; republishing it would
+    // create a producer/viewer feedback loop that floods the pipe and GPU.
+    return true;
+  }
 
   for (std::size_t index = 0; index < output_slots_.size(); ++index) {
     OutputSlot& output = output_slots_[index];
@@ -549,6 +557,7 @@ bool D3DFramePipeline::PublishLatest() {
     publication.slot = static_cast<std::uint32_t>(index);
     output.frame_id = publication.frame_id;
     output.state = OutputState::kPublished;
+    published_frame_id_ = publication.frame_id;
     if (!publish_callback_(publication)) {
       Log(LogLevel::kError, L"Critical shared frame publication failed");
       return false;

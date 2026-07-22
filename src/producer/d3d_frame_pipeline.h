@@ -104,6 +104,7 @@ class D3DFramePipeline final {
   std::size_t next_view_slot_ = 0;
   std::size_t latest_view_slot_ = 0;
   std::uint64_t frame_id_ = 0;
+  std::uint64_t published_frame_id_ = 0;
   std::uint64_t generation_ = 1;
   bool streaming_enabled_ = false;
   bool popup_visible_ = false;

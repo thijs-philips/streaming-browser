@@ -35,3 +35,11 @@
 - GPU budget on the validation machine: 5,234 MiB local budget, approximately 6 MiB used before workload allocation.
 - Portable sandboxed package validated from the package directory. Archive size: approximately 175 MiB.
 - Known limitation: the select control receives viewer input, but CEF M150 on this machine does not emit a popup-show callback. Popup composition remains implemented for delivered `PET_POPUP` callbacks.
+
+## 2026-07-22 — Performance regression fix: publication feedback loop
+
+- Symptom: laptop heat, and viewer latency growing to seconds over time; producer frame counter advanced smoothly while viewer frame numbers skipped chunks.
+- Measured (idle stress page, Release): ~1,320 FrameReady messages/sec on the pipe instead of the expected ~30; viewer burned 7.6 CPU-seconds in under a minute.
+- Root cause: `PublishLatest()` was invoked both on every new CEF frame and from `ReleaseOutputSlot()` on every viewer release. Because publication always republished `latest_metadata_` even when that frame ID had already been sent, each release triggered a new publication of the same frame, whose release triggered another, saturating all four keyed-mutex slots with duplicate 4K copies + pipe messages. The loop amplified until GPU/pipe queues backed up, which surfaced as growing input-to-photon latency.
+- Fix: track `published_frame_id_` in `D3DFramePipeline` and skip publication when `latest_metadata_.frame_id` has already been delivered; reset it whenever a fresh output ring/generation is created so reconnects still receive the latest frame.
+- Validated: ~30 msgs/sec after the fix, viewer CPU 0.19 s over the same window, unit + IPC + E2E tests pass, and a 90 s Release soak held 30.0 fps (producer peak 153 MiB, viewer peak 68 MiB).
