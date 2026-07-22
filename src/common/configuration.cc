@@ -141,18 +141,20 @@ bool ParseViewer(const YAML::Node& node,
   if (const YAML::Node window = node["window"]) {
     if (!RequireMap(window, "viewer.window", error) ||
         !RejectUnknownKeys(window,
-                           {"width", "height", "toolbar_visible",
-                            "toolbar_overlays_content", "pixel_perfect",
-                            "maximized", "fullscreen"},
+                           {"width", "height", "show_toolbar",
+                            "show_url_bar", "url_bar_overlays_content",
+                            "pixel_perfect", "maximized", "fullscreen"},
                            "viewer.window", error) ||
         !ReadScalar(window, "width", "viewer.window",
                     &configuration->window_width, error) ||
         !ReadScalar(window, "height", "viewer.window",
                     &configuration->window_height, error) ||
-        !ReadScalar(window, "toolbar_visible", "viewer.window",
-                    &configuration->toolbar_visible, error) ||
-        !ReadScalar(window, "toolbar_overlays_content", "viewer.window",
-                    &configuration->toolbar_overlays_content, error) ||
+        !ReadScalar(window, "show_toolbar", "viewer.window",
+                    &configuration->show_toolbar, error) ||
+        !ReadScalar(window, "show_url_bar", "viewer.window",
+                    &configuration->show_url_bar, error) ||
+        !ReadScalar(window, "url_bar_overlays_content", "viewer.window",
+                    &configuration->url_bar_overlays_content, error) ||
         !ReadScalar(window, "pixel_perfect", "viewer.window",
                     &configuration->pixel_perfect, error) ||
         !ReadScalar(window, "maximized", "viewer.window",

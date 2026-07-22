@@ -89,10 +89,18 @@ without touching the producer's. Command-line switches are applied after the
 YAML file and therefore override it.
 
 The producer file controls URL, transparency, initial viewer visibility,
-alpha probing, viewport dimensions, and maximum frame rate. The viewer file
-controls startup navigation, window dimensions, toolbar visibility, 1:1 mode,
-and fullscreen mode. Unknown keys and invalid ranges are rejected rather than
-silently ignored.
+alpha probing, viewport dimensions, and maximum frame rate. Unknown keys and
+invalid ranges are rejected rather than silently ignored.
+
+The viewer file controls startup navigation, window dimensions, and the UI:
+
+| Key | Effect |
+| --- | --- |
+| `window.fullscreen` / `window.maximized` | Borderless F11-style presentation, or maximized with normal window chrome. Mutually exclusive. |
+| `window.show_toolbar` | Menu bar with the View pulldown. |
+| `window.show_url_bar` | Navigation row: back/forward, reload/stop, URL field, and Go. |
+| `window.url_bar_overlays_content` | `true` draws page pixels under the URL bar; `false` reserves a browser-like band above the page. |
+| `window.pixel_perfect` | 1:1 pixel mode instead of aspect-fit. |
 
 For a viewer that behaves more like a conventional desktop browser, use the
 [`config/viewer.browser.yaml`](config/viewer.browser.yaml) preset (paired with
@@ -104,15 +112,11 @@ For a viewer that behaves more like a conventional desktop browser, use the
     -ViewerConfig .\config\viewer.browser.yaml
 ```
 
-This preset keeps the navigation toolbar visible, reserves its space above the
-page instead of overlaying page pixels, uses aspect-fit rendering, and starts
-maximized while retaining normal window chrome. It does **not** change the
-application defaults; copy and adjust the preset for a specific application.
-
-Viewer YAML also supports `toolbar_overlays_content`, `maximized`, and
-`fullscreen`. Maximized and fullscreen are mutually exclusive because
-maximized mode keeps the browser-like title bar and toolbar, while fullscreen
-is the borderless F11-style presentation mode.
+This preset keeps the menu and URL bar visible, reserves the URL-bar space
+above the page instead of overlaying page pixels, uses aspect-fit rendering,
+and starts maximized while retaining normal window chrome. It does **not**
+change the application defaults; copy and adjust the preset for a specific
+application.
 
 CEF intentionally remains windowless: the D3D11 viewer displays the exact
 captured/composited stream and owns input forwarding. A second native CEF

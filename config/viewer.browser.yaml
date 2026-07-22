@@ -9,9 +9,12 @@ window:
   # Width and height are the restored size used after un-maximizing.
   width: 1440
   height: 900
-  toolbar_visible: true
-  # Reserve the toolbar band instead of drawing page content underneath it.
-  toolbar_overlays_content: false
+  # Menu bar with the View pulldown.
+  show_toolbar: true
+  # Navigation row: back/forward, reload/stop, URL field, and Go.
+  show_url_bar: true
+  # Reserve the URL-bar band instead of drawing page content underneath it.
+  url_bar_overlays_content: false
   # Aspect-fit resembles a normal responsive browser viewport.
   pixel_perfect: false
   # Maximized keeps normal window chrome and the browser toolbar, unlike F11.

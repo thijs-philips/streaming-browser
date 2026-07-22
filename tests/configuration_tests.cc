@@ -44,8 +44,9 @@ navigate: https://example.org/controls
 window:
   width: 1440
   height: 900
-  toolbar_visible: false
-  toolbar_overlays_content: false
+  show_toolbar: false
+  show_url_bar: false
+  url_bar_overlays_content: false
   pixel_perfect: true
   maximized: true
   fullscreen: false
@@ -56,8 +57,9 @@ window:
   }
   if (viewer.navigate != "https://example.org/controls" ||
       viewer.window_width != 1440 || viewer.window_height != 900 ||
-      viewer.toolbar_visible || viewer.toolbar_overlays_content ||
-      !viewer.pixel_perfect || !viewer.maximized || viewer.fullscreen) {
+      viewer.show_toolbar || viewer.show_url_bar ||
+      viewer.url_bar_overlays_content || !viewer.pixel_perfect ||
+      !viewer.maximized || viewer.fullscreen) {
     return Fail("viewer YAML values did not parse");
   }
 
@@ -92,8 +94,15 @@ window:
       producer.view_width != 3840 || producer.frame_rate != 30) {
     return Fail("empty producer YAML did not preserve defaults");
   }
+  if (streaming::ParseViewerConfigurationYaml(
+          "window:\n  toolbar_visible: true\n", &viewer, &error) ||
+      error.find("unknown key 'toolbar_visible'") == std::string::npos) {
+    return Fail("legacy toolbar_visible key was not rejected");
+  }
+
   if (!streaming::ParseViewerConfigurationYaml("{}", &viewer, &error) ||
-      viewer.window_width != 1280 || !viewer.toolbar_overlays_content ||
+      viewer.window_width != 1280 || !viewer.show_toolbar ||
+      !viewer.show_url_bar || !viewer.url_bar_overlays_content ||
       viewer.maximized) {
     return Fail("empty viewer YAML did not preserve defaults");
   }

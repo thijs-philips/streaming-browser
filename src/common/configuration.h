@@ -20,8 +20,13 @@ struct ViewerConfiguration {
   std::string navigate;
   int window_width = 1280;
   int window_height = 760;
-  bool toolbar_visible = true;
-  bool toolbar_overlays_content = true;
+  // Menu bar with the View pulldown.
+  bool show_toolbar = true;
+  // Navigation row: back/forward, reload/stop, URL field, and Go.
+  bool show_url_bar = true;
+  // true renders page pixels underneath the URL bar (original overlay
+  // layout); false reserves a browser-like band above the page.
+  bool url_bar_overlays_content = true;
   bool pixel_perfect = false;
   bool maximized = false;
   bool fullscreen = false;

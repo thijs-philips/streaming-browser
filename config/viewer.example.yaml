@@ -8,10 +8,13 @@ navigate: ""
 window:
   width: 1280
   height: 760
-  toolbar_visible: true
+  # Menu bar with the View pulldown.
+  show_toolbar: true
+  # Navigation row: back/forward, reload/stop, URL field, and Go.
+  show_url_bar: true
   # true preserves the original overlay layout; false reserves a browser-like
-  # toolbar band above the rendered page.
-  toolbar_overlays_content: true
+  # URL-bar band above the rendered page.
+  url_bar_overlays_content: true
   pixel_perfect: false
   maximized: false
   fullscreen: false
