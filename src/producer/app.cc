@@ -24,7 +24,8 @@ class SetViewerVisibleTask final : public CefTask {
 
 }  // namespace
 
-ProducerApp::ProducerApp(DWORD launcher_thread_id, ProducerConfig config)
+ProducerApp::ProducerApp(DWORD launcher_thread_id,
+             ProducerConfiguration config)
     : launcher_thread_id_(launcher_thread_id), config_(std::move(config)) {}
 
 void ProducerApp::OnContextInitialized() {
@@ -36,8 +37,7 @@ void ProducerApp::OnContextInitialized() {
   }
 
   CefRefPtr<BrowserClient> client =
-      new BrowserClient(launcher_thread_id_, config_.force_transparency,
-                        config_.viewer_visible, config_.alpha_probe_enabled);
+      new BrowserClient(launcher_thread_id_, config_);
   {
     base::AutoLock lock(client_lock_);
     client_ = client;
@@ -49,7 +49,7 @@ void ProducerApp::OnContextInitialized() {
   window_info.external_begin_frame_enabled = false;
 
   CefBrowserSettings browser_settings;
-  browser_settings.windowless_frame_rate = 30;
+  browser_settings.windowless_frame_rate = config_.frame_rate;
   browser_settings.background_color = CefColorSetARGB(0, 0, 0, 0);
 
   if (!CefBrowserHost::CreateBrowser(window_info, client, config_.url,

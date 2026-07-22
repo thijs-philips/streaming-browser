@@ -78,7 +78,7 @@ int LauncherWindow::RunMessageLoop() {
           L"Streaming Browser — accelerated frame " + frame;
       SetWindowTextW(window_, title.c_str());
       const std::wstring status =
-          L"Accelerated 3840×2160 capture active. Frame " + frame +
+          L"Accelerated off-screen capture active. Frame " + frame +
           L" copied with callback-scoped GPU completion.";
       SetStatus(status.c_str());
       continue;

@@ -34,7 +34,9 @@ Normal browser capture often means screenshots, CPU readback, lost transparency,
 - CMake 3.21 or newer
 - PowerShell
 
-The first configure downloads and verifies the pinned CEF M150 distribution. CEF and build outputs are intentionally excluded from Git.
+The first configure downloads and verifies the pinned CEF M150 distribution
+and fetches yaml-cpp at a pinned commit. Third-party sources and build outputs
+are intentionally excluded from Git.
 
 ### Build
 
@@ -67,6 +69,32 @@ Drag the slider in the viewer to exercise the complete feedback loop:
 viewer input → local IPC → CEF → webpage update → GPU frame → viewer
 ```
 
+### Configure with YAML
+
+The producer and viewer can read the same YAML file. Start from
+[`streaming-browser.example.yaml`](streaming-browser.example.yaml), edit it,
+then run:
+
+```powershell
+.\scripts\run-config-demo.ps1 -Configuration Release `
+    -Config .\streaming-browser.example.yaml
+```
+
+Or launch the executables separately with `--config=<path>`. Each executable
+reads its own top-level section (`producer` or `viewer`). Command-line switches
+are applied afterward and therefore override YAML values.
+
+The producer section controls URL, transparency, initial viewer visibility,
+alpha probing, viewport dimensions, and maximum frame rate. The viewer section
+controls startup navigation, window dimensions, toolbar visibility, 1:1 mode,
+and fullscreen mode. Unknown keys and invalid ranges are rejected rather than
+silently ignored.
+
+CEF intentionally remains windowless: the D3D11 viewer displays the exact
+captured/composited stream and owns input forwarding. A second native CEF
+window would introduce a different rendering/input path and could be misleading
+for stream debugging.
+
 ## How it works
 
 ```mermaid
@@ -89,7 +117,7 @@ The producer discovers Chromium's DXGI adapter, safely copies each temporary CEF
 
 | Capability | Current state |
 | --- | --- |
-| Browser output | 3840 × 2160, up to 30 fps |
+| Browser output | Configurable viewport and 1–60 fps cap; defaults to 3840 × 2160 at 30 fps |
 | Alpha | Premultiplied BGRA/RGBA, transparent background |
 | Data path | Local D3D11 shared textures |
 | Viewer | Aspect fit, 1:1 pan, fullscreen, checkerboard alpha preview |

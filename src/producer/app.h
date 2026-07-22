@@ -7,20 +7,14 @@
 
 #include "include/base/cef_lock.h"
 #include "include/cef_app.h"
+#include "src/common/configuration.h"
 #include "src/producer/browser_client.h"
 
 namespace streaming::producer {
 
-struct ProducerConfig {
-  std::string url = "https://example.com";
-  bool force_transparency = false;
-  bool viewer_visible = false;
-  bool alpha_probe_enabled = false;
-};
-
 class ProducerApp final : public CefApp, public CefBrowserProcessHandler {
  public:
-  ProducerApp(DWORD launcher_thread_id, ProducerConfig config);
+  ProducerApp(DWORD launcher_thread_id, ProducerConfiguration config);
 
   CefRefPtr<CefBrowserProcessHandler> GetBrowserProcessHandler() override {
     return this;
@@ -37,7 +31,7 @@ class ProducerApp final : public CefApp, public CefBrowserProcessHandler {
 
  private:
   DWORD launcher_thread_id_ = 0;
-  ProducerConfig config_;
+  ProducerConfiguration config_;
   std::atomic_bool closing_ = false;
   HWND parent_window_ = nullptr;
   base::Lock client_lock_;

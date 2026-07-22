@@ -11,20 +11,14 @@
 #include "src/producer/launcher_window.h"
 
 namespace streaming::producer {
-namespace {
-
-constexpr int kViewWidth = 3840;
-constexpr int kViewHeight = 2160;
-
-}  // namespace
 
 BrowserClient::BrowserClient(DWORD launcher_thread_id,
-                             bool force_transparency,
-                             bool viewer_visible,
-                             bool alpha_probe_enabled)
+                             const ProducerConfiguration& configuration)
     : launcher_thread_id_(launcher_thread_id),
-      force_transparency_(force_transparency),
-      viewer_visible_(viewer_visible) {
+      view_width_(configuration.view_width),
+      view_height_(configuration.view_height),
+      force_transparency_(configuration.force_transparency),
+      viewer_visible_(configuration.viewer_visible) {
   stream_server_ = std::make_unique<StreamServer>(
       [this](D3DFramePipeline::RingSnapshot* snapshot) {
         return pipeline_ && pipeline_->GetRingSnapshot(snapshot);
@@ -72,18 +66,18 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
           stream_server_->NotifyRingReady();
         }
       },
-      alpha_probe_enabled);
+      configuration.alpha_probe_enabled);
   stream_server_->Start();
 }
 
 void BrowserClient::GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) {
   CEF_REQUIRE_UI_THREAD();
-  rect = CefRect(0, 0, kViewWidth, kViewHeight);
+  rect = CefRect(0, 0, view_width_, view_height_);
 }
 
 bool BrowserClient::GetRootScreenRect(CefRefPtr<CefBrowser>, CefRect& rect) {
   CEF_REQUIRE_UI_THREAD();
-  rect = CefRect(0, 0, kViewWidth, kViewHeight);
+  rect = CefRect(0, 0, view_width_, view_height_);
   return true;
 }
 
@@ -105,7 +99,7 @@ bool BrowserClient::GetScreenInfo(CefRefPtr<CefBrowser>,
   screen_info.depth = 32;
   screen_info.depth_per_component = 8;
   screen_info.is_monochrome = false;
-  screen_info.rect = CefRect(0, 0, kViewWidth, kViewHeight);
+  screen_info.rect = CefRect(0, 0, view_width_, view_height_);
   screen_info.available_rect = screen_info.rect;
   return true;
 }
@@ -355,8 +349,8 @@ void BrowserClient::OnViewerInput(protocol::InputEvent event) {
   }
   CefRefPtr<CefBrowserHost> host = browser_->GetHost();
   CefMouseEvent mouse;
-  mouse.x = std::clamp(event.x, 0, kViewWidth - 1);
-  mouse.y = std::clamp(event.y, 0, kViewHeight - 1);
+  mouse.x = std::clamp(event.x, 0, view_width_ - 1);
+  mouse.y = std::clamp(event.y, 0, view_height_ - 1);
   mouse.modifiers = event.modifiers;
   switch (event.kind) {
     case protocol::InputKind::kMouseMove:

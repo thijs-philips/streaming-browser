@@ -1,3 +1,16 @@
+add_executable(configuration_tests
+  configuration_tests.cc
+)
+target_link_libraries(configuration_tests PRIVATE streaming_common)
+target_include_directories(configuration_tests PRIVATE "${CMAKE_SOURCE_DIR}")
+target_compile_features(configuration_tests PRIVATE cxx_std_20)
+target_compile_definitions(configuration_tests PRIVATE UNICODE _UNICODE NOMINMAX WIN32_LEAN_AND_MEAN)
+target_compile_options(configuration_tests PRIVATE /W4 /WX /permissive- /utf-8)
+set_target_properties(configuration_tests PROPERTIES
+  RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin/$<CONFIGURATION>")
+add_test(NAME configuration_tests COMMAND configuration_tests)
+set_tests_properties(configuration_tests PROPERTIES LABELS "unit;configuration")
+
 add_executable(protocol_tests
   protocol_tests.cc
 )

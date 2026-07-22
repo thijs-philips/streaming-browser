@@ -129,6 +129,10 @@ try {
         $null = $delay.WaitOne(100)
     }
     if (-not $navigated) { throw 'Viewer URL command did not navigate producer' }
+    # Navigation logging can precede the renderer's new document becoming the
+    # active input target. Give CEF one short settling interval before injecting
+    # the synthetic click; without this the test is timing-dependent on fast builds.
+    $null = $delay.WaitOne(500)
     $reconnected.Refresh()
     $clientRect = [StreamingBrowserE2ENativeMethodsV3+RECT]::new()
     if (-not [StreamingBrowserE2ENativeMethodsV3]::GetClientRect(

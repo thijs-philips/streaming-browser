@@ -14,6 +14,7 @@
 #include "include/cef_load_handler.h"
 #include "include/cef_render_handler.h"
 #include "include/cef_request_handler.h"
+#include "src/common/configuration.h"
 #include "src/producer/d3d_frame_pipeline.h"
 #include "src/producer/stream_server.h"
 
@@ -29,9 +30,7 @@ class BrowserClient final : public CefClient,
                             public CefJSDialogHandler {
  public:
   BrowserClient(DWORD launcher_thread_id,
-                bool force_transparency,
-                bool viewer_visible,
-                bool alpha_probe_enabled);
+                const ProducerConfiguration& configuration);
 
   CefRefPtr<CefRenderHandler> GetRenderHandler() override { return this; }
   CefRefPtr<CefLifeSpanHandler> GetLifeSpanHandler() override { return this; }
@@ -134,6 +133,8 @@ class BrowserClient final : public CefClient,
   void PublishNavigationState();
 
   DWORD launcher_thread_id_ = 0;
+  int view_width_ = 3840;
+  int view_height_ = 2160;
   bool force_transparency_ = false;
   bool viewer_visible_ = false;
   bool software_fallback_reported_ = false;

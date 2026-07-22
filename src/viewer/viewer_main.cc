@@ -4,13 +4,16 @@
 #include <imm.h>
 
 #include <algorithm>
+#include <charconv>
 #include <cstdint>
+#include <filesystem>
 #include <memory>
 #include <string>
 #include <string_view>
 #include <utility>
 
 #include "include/internal/cef_types.h"
+#include "src/common/configuration.h"
 #include "src/common/logging.h"
 #include "src/common/protocol.h"
 #include "src/viewer/d3d_renderer.h"
@@ -48,6 +51,7 @@ struct WindowState {
   bool updating_url = false;
   bool url_editing = false;
   bool needs_render = true;
+  bool initial_pixel_perfect = false;
   std::uint64_t last_title_frame = 0;
   std::string startup_navigation;
   HCURSOR page_cursor = LoadCursor(nullptr, IDC_ARROW);
@@ -129,37 +133,185 @@ std::u16string ReadImeString(HWND window, DWORD index) {
   return result;
 }
 
+std::string WideToUtf8(std::wstring_view value) {
+  if (value.empty()) return {};
+  const int required = WideCharToMultiByte(
+      CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0,
+      nullptr, nullptr);
+  std::string result(static_cast<std::size_t>(required), '\0');
+  WideCharToMultiByte(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                      result.data(), required, nullptr, nullptr);
+  return result;
+}
+
+std::wstring Utf8ToWide(std::string_view value) {
+  if (value.empty()) return {};
+  const int required = MultiByteToWideChar(
+      CP_UTF8, 0, value.data(), static_cast<int>(value.size()), nullptr, 0);
+  std::wstring result(static_cast<std::size_t>(required), L'\0');
+  MultiByteToWideChar(CP_UTF8, 0, value.data(), static_cast<int>(value.size()),
+                      result.data(), required);
+  return result;
+}
+
+bool ArgumentValue(std::wstring_view argument,
+                   std::wstring_view name,
+                   std::wstring_view* value) {
+  if (!argument.starts_with(name) || argument.size() <= name.size() ||
+      argument[name.size()] != L'=') {
+    return false;
+  }
+  *value = argument.substr(name.size() + 1);
+  return true;
+}
+
+bool ParseIntegerArgument(std::wstring_view argument,
+                          std::wstring_view name,
+                          int minimum,
+                          int maximum,
+                          int* value,
+                          std::string* error) {
+  std::wstring_view text;
+  if (!ArgumentValue(argument, name, &text)) return true;
+  const std::string utf8 = WideToUtf8(text);
+  int parsed = 0;
+  const auto [end, code] =
+      std::from_chars(utf8.data(), utf8.data() + utf8.size(), parsed);
+  if (code != std::errc{} || end != utf8.data() + utf8.size() ||
+      parsed < minimum || parsed > maximum) {
+    *error = WideToUtf8(name) + " must be between " +
+             std::to_string(minimum) + " and " + std::to_string(maximum);
+    return false;
+  }
+  *value = parsed;
+  return true;
+}
+
+bool LoadViewerConfiguration(int argument_count,
+                             LPWSTR* arguments,
+                             streaming::ViewerConfiguration* configuration,
+                             std::string* error) {
+  streaming::ApplicationConfiguration file_configuration;
+  for (int i = 1; i < argument_count; ++i) {
+    if (std::wstring_view(arguments[i]) == L"--config") {
+      *error = "--config requires a YAML file path";
+      return false;
+    }
+    std::wstring_view path;
+    if (ArgumentValue(arguments[i], L"--config", &path)) {
+      if (!streaming::LoadConfigurationYaml(std::filesystem::path(path),
+                                             &file_configuration, error)) {
+        return false;
+      }
+      *configuration = file_configuration.viewer;
+      streaming::Log(streaming::LogLevel::kInfo,
+                     L"Loaded viewer YAML configuration from " +
+                         std::wstring(path));
+      break;
+    }
+  }
+
+  for (int i = 1; i < argument_count; ++i) {
+    const std::wstring_view argument(arguments[i]);
+    std::wstring_view value;
+    if (ArgumentValue(argument, L"--navigate", &value)) {
+      configuration->navigate = WideToUtf8(value);
+    } else if (!ParseIntegerArgument(argument, L"--window-width", 320, 16384,
+                                     &configuration->window_width, error) ||
+               !ParseIntegerArgument(argument, L"--window-height", 240, 16384,
+                                     &configuration->window_height, error)) {
+      return false;
+    } else if (argument == L"--toolbar") {
+      configuration->toolbar_visible = true;
+    } else if (argument == L"--no-toolbar") {
+      configuration->toolbar_visible = false;
+    } else if (argument == L"--pixel-perfect") {
+      configuration->pixel_perfect = true;
+    } else if (argument == L"--fit") {
+      configuration->pixel_perfect = false;
+    } else if (argument == L"--fullscreen") {
+      configuration->fullscreen = true;
+    } else if (argument == L"--windowed") {
+      configuration->fullscreen = false;
+    }
+  }
+  return true;
+}
+
+void SetToolbarVisible(WindowState* state, bool visible) {
+  state->toolbar_visible = visible;
+  const int show = visible ? SW_SHOW : SW_HIDE;
+  ShowWindow(state->back, show);
+  ShowWindow(state->forward, show);
+  ShowWindow(state->reload, show);
+  ShowWindow(state->go, show);
+  ShowWindow(state->url, show);
+  CheckMenuItem(GetMenu(state->window), kToggleToolbar,
+                MF_BYCOMMAND | (visible ? MF_CHECKED : MF_UNCHECKED));
+}
+
+void SetFullscreen(WindowState* state, bool fullscreen) {
+  if (state->fullscreen == fullscreen) return;
+  state->fullscreen = fullscreen;
+  if (fullscreen) {
+    state->window_placement.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(state->window, &state->window_placement);
+    MONITORINFO monitor{sizeof(MONITORINFO)};
+    GetMonitorInfoW(MonitorFromWindow(state->window, MONITOR_DEFAULTTONEAREST),
+                    &monitor);
+    SetWindowLongPtrW(state->window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowPos(state->window, HWND_TOP, monitor.rcMonitor.left,
+                 monitor.rcMonitor.top,
+                 monitor.rcMonitor.right - monitor.rcMonitor.left,
+                 monitor.rcMonitor.bottom - monitor.rcMonitor.top,
+                 SWP_FRAMECHANGED);
+  } else {
+    SetWindowLongPtrW(state->window, GWL_STYLE,
+                      WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+    SetWindowPlacement(state->window, &state->window_placement);
+    SetWindowPos(state->window, nullptr, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+  }
+  state->needs_render = true;
+}
+
 void CreateToolbar(WindowState* state, HINSTANCE instance) {
   HMENU menu = CreateMenu();
   HMENU view_menu = CreatePopupMenu();
-  AppendMenuW(view_menu, MF_STRING | MF_CHECKED, kToggleToolbar,
+  AppendMenuW(view_menu,
+              MF_STRING | (state->toolbar_visible ? MF_CHECKED : 0),
+              kToggleToolbar,
               L"Show toolbar");
-  AppendMenuW(view_menu, MF_STRING, kTogglePixelPerfect,
+  AppendMenuW(view_menu,
+              MF_STRING | (state->initial_pixel_perfect ? MF_CHECKED : 0),
+              kTogglePixelPerfect,
               L"1:1 pixel mode (Ctrl+Arrows to pan)");
   AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), L"View");
   SetMenu(state->window, menu);
-  state->back = CreateWindowW(L"BUTTON", L"←", WS_CHILD | WS_VISIBLE,
+  const DWORD control_style =
+      WS_CHILD | (state->toolbar_visible ? WS_VISIBLE : 0);
+  state->back = CreateWindowW(L"BUTTON", L"←", control_style,
                               6, 6, 32, 26, state->window,
                                 reinterpret_cast<HMENU>(
                                   static_cast<INT_PTR>(kBackButton)), instance,
                               nullptr);
-  state->forward = CreateWindowW(L"BUTTON", L"→", WS_CHILD | WS_VISIBLE,
+  state->forward = CreateWindowW(L"BUTTON", L"→", control_style,
                                  42, 6, 32, 26, state->window,
                                  reinterpret_cast<HMENU>(
                                    static_cast<INT_PTR>(kForwardButton)),
                                  instance, nullptr);
-  state->reload = CreateWindowW(L"BUTTON", L"Reload", WS_CHILD | WS_VISIBLE,
+  state->reload = CreateWindowW(L"BUTTON", L"Reload", control_style,
                                 78, 6, 62, 26, state->window,
                                 reinterpret_cast<HMENU>(
                                   static_cast<INT_PTR>(kReloadButton)), instance,
                                 nullptr);
-  state->go = CreateWindowW(L"BUTTON", L"Go", WS_CHILD | WS_VISIBLE,
+  state->go = CreateWindowW(L"BUTTON", L"Go", control_style,
                             510, 6, 42, 26, state->window,
                             reinterpret_cast<HMENU>(
                               static_cast<INT_PTR>(kGoButton)), instance,
                             nullptr);
   state->url = CreateWindowExW(
-      WS_EX_CLIENTEDGE, L"EDIT", L"", WS_CHILD | WS_VISIBLE | ES_AUTOHSCROLL,
+      WS_EX_CLIENTEDGE, L"EDIT", L"", control_style | ES_AUTOHSCROLL,
       146, 6, 358, 26, state->window,
       reinterpret_cast<HMENU>(static_cast<INT_PTR>(kUrlEdit)),
       instance, nullptr);
@@ -182,6 +334,7 @@ LRESULT CALLBACK WindowProc(HWND window,
                         reinterpret_cast<LONG_PTR>(state));
       CreateToolbar(state, create->hInstance);
       if (!state->renderer.Initialize(window)) return -1;
+      state->renderer.SetPixelPerfect(state->initial_pixel_perfect);
       SetTimer(window, 1, 16, nullptr);
       return 0;
     }
@@ -282,16 +435,7 @@ LRESULT CALLBACK WindowProc(HWND window,
       break;
     case WM_COMMAND:
       if (LOWORD(wparam) == kToggleToolbar) {
-        state->toolbar_visible = !state->toolbar_visible;
-        const int show = state->toolbar_visible ? SW_SHOW : SW_HIDE;
-        ShowWindow(state->back, show);
-        ShowWindow(state->forward, show);
-        ShowWindow(state->reload, show);
-        ShowWindow(state->go, show);
-        ShowWindow(state->url, show);
-        CheckMenuItem(GetMenu(window), kToggleToolbar,
-                      MF_BYCOMMAND |
-                          (state->toolbar_visible ? MF_CHECKED : MF_UNCHECKED));
+        SetToolbarVisible(state, !state->toolbar_visible);
         return 0;
       }
       if (LOWORD(wparam) == kTogglePixelPerfect) {
@@ -400,27 +544,7 @@ LRESULT CALLBACK WindowProc(HWND window,
     case WM_KEYUP:
     case WM_CHAR:
       if (message == WM_KEYDOWN && wparam == VK_F11) {
-        state->fullscreen = !state->fullscreen;
-        if (state->fullscreen) {
-          state->window_placement.length = sizeof(WINDOWPLACEMENT);
-          GetWindowPlacement(window, &state->window_placement);
-          MONITORINFO monitor{sizeof(MONITORINFO)};
-          GetMonitorInfoW(MonitorFromWindow(window, MONITOR_DEFAULTTONEAREST),
-                          &monitor);
-          SetWindowLongPtrW(window, GWL_STYLE,
-                            WS_POPUP | WS_VISIBLE);
-          SetWindowPos(window, HWND_TOP, monitor.rcMonitor.left,
-                       monitor.rcMonitor.top,
-                       monitor.rcMonitor.right - monitor.rcMonitor.left,
-                       monitor.rcMonitor.bottom - monitor.rcMonitor.top,
-                       SWP_FRAMECHANGED);
-        } else {
-          SetWindowLongPtrW(window, GWL_STYLE, WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-          SetWindowPlacement(window, &state->window_placement);
-          SetWindowPos(window, nullptr, 0, 0, 0, 0,
-                       SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER |
-                           SWP_FRAMECHANGED);
-        }
+        SetFullscreen(state, !state->fullscreen);
         return 0;
       }
       if (message == WM_KEYDOWN && state->renderer.pixel_perfect() &&
@@ -495,6 +619,24 @@ LRESULT CALLBACK WindowProc(HWND window,
 }  // namespace
 
 int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
+  streaming::ViewerConfiguration configuration;
+  int argument_count = 0;
+  LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
+  std::string configuration_error;
+  if (arguments == nullptr ||
+      !LoadViewerConfiguration(argument_count, arguments, &configuration,
+                               &configuration_error)) {
+    if (arguments != nullptr) LocalFree(arguments);
+    const std::wstring message =
+        L"Could not load viewer configuration: " +
+        Utf8ToWide(configuration_error);
+    streaming::Log(streaming::LogLevel::kError, message);
+    MessageBoxW(nullptr, message.c_str(), L"Streaming Viewer configuration",
+                MB_OK | MB_ICONERROR);
+    return 3;
+  }
+  LocalFree(arguments);
+
   WNDCLASSEXW window_class{sizeof(window_class)};
   window_class.lpfnWndProc = &WindowProc;
   window_class.hInstance = instance;
@@ -503,29 +645,13 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
   if (RegisterClassExW(&window_class) == 0) return 1;
 
   auto state = std::make_unique<WindowState>();
-  int argument_count = 0;
-  LPWSTR* arguments = CommandLineToArgvW(GetCommandLineW(), &argument_count);
-  if (arguments != nullptr) {
-    constexpr std::wstring_view prefix = L"--navigate=";
-    for (int i = 1; i < argument_count; ++i) {
-      std::wstring_view argument(arguments[i]);
-      if (argument.starts_with(prefix)) {
-        argument.remove_prefix(prefix.size());
-        const int required = WideCharToMultiByte(
-            CP_UTF8, 0, argument.data(), static_cast<int>(argument.size()),
-            nullptr, 0, nullptr, nullptr);
-        state->startup_navigation.resize(static_cast<std::size_t>(required));
-        WideCharToMultiByte(CP_UTF8, 0, argument.data(),
-                            static_cast<int>(argument.size()),
-                            state->startup_navigation.data(), required, nullptr,
-                            nullptr);
-      }
-    }
-    LocalFree(arguments);
-  }
+  state->startup_navigation = configuration.navigate;
+  state->toolbar_visible = configuration.toolbar_visible;
+  state->initial_pixel_perfect = configuration.pixel_perfect;
   HWND window = CreateWindowExW(
       0, kWindowClass, L"Streaming Browser Viewer — waiting for producer",
-      WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, 1280, 760, nullptr,
+      WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+      configuration.window_width, configuration.window_height, nullptr,
       nullptr, instance, state.get());
   if (window == nullptr) return 2;
 
@@ -560,6 +686,9 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
   state->client->Start();
 
   ShowWindow(window, show_command);
+  if (configuration.fullscreen) {
+    SetFullscreen(state.get(), true);
+  }
   UpdateWindow(window);
   MSG message{};
   while (GetMessageW(&message, nullptr, 0, 0) > 0) {

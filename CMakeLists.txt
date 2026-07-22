@@ -13,6 +13,16 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
+include(FetchContent)
+set(YAML_CPP_BUILD_CONTRIB OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "" FORCE)
+set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(yaml-cpp
+  GIT_REPOSITORY https://github.com/jbeder/yaml-cpp.git
+  GIT_TAG f7320141120f720aecc4c32be25586e7da9eb978)
+FetchContent_MakeAvailable(yaml-cpp)
+
 set(CEF_VERSION "150.0.14+g7c1aa68+chromium-150.0.7871.129" CACHE STRING "Pinned CEF version")
 set(CEF_PLATFORM "windows64")
 set(CEF_ARCHIVE_SHA1 "626fb887a04e9c5668f13eae8a39c37880cb818e")
