@@ -21,5 +21,9 @@ viewer:
     width: 1280
     height: 760
     toolbar_visible: true
+    # true preserves the original overlay layout; false reserves a browser-like
+    # toolbar band above the rendered page.
+    toolbar_overlays_content: true
     pixel_perfect: false
+    maximized: false
     fullscreen: false

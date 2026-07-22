@@ -48,6 +48,7 @@ struct WindowState {
   std::unique_ptr<streaming::viewer::StreamClient> client;
   bool connected = false;
   bool toolbar_visible = true;
+  bool toolbar_overlays_content = true;
   bool updating_url = false;
   bool url_editing = false;
   bool needs_render = true;
@@ -225,14 +226,24 @@ bool LoadViewerConfiguration(int argument_count,
       configuration->toolbar_visible = true;
     } else if (argument == L"--no-toolbar") {
       configuration->toolbar_visible = false;
+    } else if (argument == L"--toolbar-overlays-content") {
+      configuration->toolbar_overlays_content = true;
+    } else if (argument == L"--content-below-toolbar") {
+      configuration->toolbar_overlays_content = false;
     } else if (argument == L"--pixel-perfect") {
       configuration->pixel_perfect = true;
     } else if (argument == L"--fit") {
       configuration->pixel_perfect = false;
     } else if (argument == L"--fullscreen") {
       configuration->fullscreen = true;
+      configuration->maximized = false;
     } else if (argument == L"--windowed") {
       configuration->fullscreen = false;
+    } else if (argument == L"--maximized") {
+      configuration->maximized = true;
+      configuration->fullscreen = false;
+    } else if (argument == L"--no-maximized") {
+      configuration->maximized = false;
     }
   }
   return true;
@@ -248,6 +259,9 @@ void SetToolbarVisible(WindowState* state, bool visible) {
   ShowWindow(state->url, show);
   CheckMenuItem(GetMenu(state->window), kToggleToolbar,
                 MF_BYCOMMAND | (visible ? MF_CHECKED : MF_UNCHECKED));
+  state->renderer.SetContentTop(
+      visible && !state->toolbar_overlays_content ? kToolbarHeight : 0);
+  state->needs_render = true;
 }
 
 void SetFullscreen(WindowState* state, bool fullscreen) {
@@ -334,6 +348,10 @@ LRESULT CALLBACK WindowProc(HWND window,
                         reinterpret_cast<LONG_PTR>(state));
       CreateToolbar(state, create->hInstance);
       if (!state->renderer.Initialize(window)) return -1;
+        state->renderer.SetContentTop(
+          state->toolbar_visible && !state->toolbar_overlays_content
+            ? kToolbarHeight
+            : 0);
       state->renderer.SetPixelPerfect(state->initial_pixel_perfect);
       SetTimer(window, 1, 16, nullptr);
       return 0;
@@ -647,6 +665,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
   auto state = std::make_unique<WindowState>();
   state->startup_navigation = configuration.navigate;
   state->toolbar_visible = configuration.toolbar_visible;
+  state->toolbar_overlays_content = configuration.toolbar_overlays_content;
   state->initial_pixel_perfect = configuration.pixel_perfect;
   HWND window = CreateWindowExW(
       0, kWindowClass, L"Streaming Browser Viewer — waiting for producer",
@@ -685,7 +704,7 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
       });
   state->client->Start();
 
-  ShowWindow(window, show_command);
+  ShowWindow(window, configuration.maximized ? SW_MAXIMIZE : show_command);
   if (configuration.fullscreen) {
     SetFullscreen(state.get(), true);
   }

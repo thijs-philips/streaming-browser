@@ -187,17 +187,24 @@ void D3DRenderer::Render() {
     return;
   }
   context_->OMSetRenderTargets(1, render_target_.GetAddressOf(), nullptr);
+  constexpr float kWindowChrome[4] = {0.94F, 0.95F, 0.97F, 1.0F};
+  context_->ClearRenderTargetView(render_target_.Get(), kWindowChrome);
   context_->IASetInputLayout(nullptr);
   context_->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
   context_->VSSetShader(vertex_shader_.Get(), nullptr, 0);
 
   D3D11_VIEWPORT full{};
+  full.TopLeftY = static_cast<float>(content_top_);
   full.Width = static_cast<float>(back_buffer_width_);
-  full.Height = static_cast<float>(back_buffer_height_);
+  full.Height = content_top_ < back_buffer_height_
+                    ? static_cast<float>(back_buffer_height_ - content_top_)
+                    : 0.0F;
   full.MaxDepth = 1.0F;
-  context_->RSSetViewports(1, &full);
-  context_->PSSetShader(checker_shader_.Get(), nullptr, 0);
-  context_->Draw(3, 0);
+  if (full.Height > 0.0F) {
+    context_->RSSetViewports(1, &full);
+    context_->PSSetShader(checker_shader_.Get(), nullptr, 0);
+    context_->Draw(3, 0);
+  }
 
   if (has_frame_ && local_frame_view_) {
     const D3D11_VIEWPORT frame_viewport = FrameViewport();
@@ -419,20 +426,22 @@ void D3DRenderer::ResetDevice() {
 D3D11_VIEWPORT D3DRenderer::FrameViewport() const {
   D3D11_VIEWPORT viewport{};
   if (source_width_ == 0 || source_height_ == 0 || back_buffer_width_ == 0 ||
-      back_buffer_height_ == 0) {
+      back_buffer_height_ == 0 || content_top_ >= back_buffer_height_) {
     return viewport;
   }
-    const float scale = pixel_perfect_
-                ? 1.0F
-                : std::min(
-                  static_cast<float>(back_buffer_width_) /
-                    source_width_,
-                  static_cast<float>(back_buffer_height_) /
-                    source_height_);
+  const float content_height =
+      static_cast<float>(back_buffer_height_ - content_top_);
+  const float scale = pixel_perfect_
+                          ? 1.0F
+                          : std::min(
+                                static_cast<float>(back_buffer_width_) /
+                                    source_width_,
+                                content_height / source_height_);
   viewport.Width = std::max(1.0F, source_width_ * scale);
   viewport.Height = std::max(1.0F, source_height_ * scale);
   viewport.TopLeftX = (back_buffer_width_ - viewport.Width) * 0.5F + pan_x_;
-  viewport.TopLeftY = (back_buffer_height_ - viewport.Height) * 0.5F + pan_y_;
+  viewport.TopLeftY = static_cast<float>(content_top_) +
+                      (content_height - viewport.Height) * 0.5F + pan_y_;
   viewport.MaxDepth = 1.0F;
   return viewport;
 }

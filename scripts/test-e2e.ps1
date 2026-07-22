@@ -173,6 +173,10 @@ try {
            -not ((Get-Content $log -Raw) -match 'Navigated to file:///.*popup\.html')) {
         $null = $delay.WaitOne(100)
     }
+    if (-not ((Get-Content $log -Raw) -match 'Navigated to file:///.*popup\.html')) {
+        throw 'Viewer URL command did not navigate to popup fixture'
+    }
+    $null = $delay.WaitOne(500)
     $popupViewer.Refresh()
     [StreamingBrowserE2ENativeMethodsV3]::SendMessage(
         $popupViewer.MainWindowHandle, 0x0201, [IntPtr]1, $mousePoint) | Out-Null

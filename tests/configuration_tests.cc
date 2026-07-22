@@ -31,8 +31,10 @@ viewer:
     width: 1440
     height: 900
     toolbar_visible: false
+    toolbar_overlays_content: false
     pixel_perfect: true
-    fullscreen: true
+    maximized: true
+    fullscreen: false
 )YAML";
 
   if (!streaming::ParseConfigurationYaml(yaml, &configuration, &error)) {
@@ -51,8 +53,10 @@ viewer:
       configuration.viewer.window_width != 1440 ||
       configuration.viewer.window_height != 900 ||
       configuration.viewer.toolbar_visible ||
+      configuration.viewer.toolbar_overlays_content ||
       !configuration.viewer.pixel_perfect ||
-      !configuration.viewer.fullscreen) {
+      !configuration.viewer.maximized ||
+      configuration.viewer.fullscreen) {
     return Fail("viewer YAML values did not parse");
   }
 
@@ -72,10 +76,18 @@ viewer:
       error.find("viewer.window.width") == std::string::npos) {
     return Fail("invalid scalar type was not rejected");
   }
+  if (streaming::ParseConfigurationYaml(
+          "viewer:\n  window:\n    maximized: true\n    fullscreen: true\n",
+          &configuration, &error) ||
+      error.find("cannot both be true") == std::string::npos) {
+    return Fail("conflicting viewer modes were not rejected");
+  }
 
   if (!streaming::ParseConfigurationYaml("{}", &configuration, &error) ||
       configuration.producer.view_width != 3840 ||
-      configuration.viewer.window_width != 1280) {
+      configuration.viewer.window_width != 1280 ||
+      !configuration.viewer.toolbar_overlays_content ||
+      configuration.viewer.maximized) {
     return Fail("empty YAML did not preserve defaults");
   }
 

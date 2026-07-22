@@ -21,7 +21,9 @@ struct ViewerConfiguration {
   int window_width = 1280;
   int window_height = 760;
   bool toolbar_visible = true;
+  bool toolbar_overlays_content = true;
   bool pixel_perfect = false;
+  bool maximized = false;
   bool fullscreen = false;
 };
 

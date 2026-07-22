@@ -32,6 +32,7 @@ Copy-Item $yamlCppLicense (Join-Path $package 'YAML_CPP_LICENSE.txt')
 Copy-Item (Join-Path $root 'PROGRESS.md') $package
 Copy-Item (Join-Path $root 'FINAL_REPORT.md') $package
 Copy-Item (Join-Path $root 'streaming-browser.example.yaml') $package
+Copy-Item (Join-Path $root 'browser-viewer.conf.yml') $package
 New-Item -ItemType Directory -Path (Join-Path $package 'fixtures') -Force | Out-Null
 Copy-Item (Join-Path $root 'tests\fixtures\*.html') (Join-Path $package 'fixtures')
 

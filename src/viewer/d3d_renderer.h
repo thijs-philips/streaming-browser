@@ -19,6 +19,7 @@ class D3DRenderer final {
   bool ConsumeFrame(const protocol::FrameMetadata& metadata);
   bool Resize(unsigned width, unsigned height);
   void Render();
+  void SetContentTop(unsigned pixels) { content_top_ = pixels; }
   void SetPixelPerfect(bool enabled);
   void Pan(float delta_x, float delta_y);
   [[nodiscard]] bool pixel_perfect() const { return pixel_perfect_; }
@@ -59,6 +60,7 @@ class D3DRenderer final {
   std::vector<SharedSlot> shared_slots_;
   unsigned back_buffer_width_ = 0;
   unsigned back_buffer_height_ = 0;
+  unsigned content_top_ = 0;
   unsigned source_width_ = 0;
   unsigned source_height_ = 0;
   bool has_frame_ = false;

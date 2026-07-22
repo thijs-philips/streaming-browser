@@ -142,7 +142,8 @@ bool ParseViewer(const YAML::Node& node,
     if (!RequireMap(window, "viewer.window", error) ||
         !RejectUnknownKeys(window,
                            {"width", "height", "toolbar_visible",
-                            "pixel_perfect", "fullscreen"},
+                            "toolbar_overlays_content", "pixel_perfect",
+                            "maximized", "fullscreen"},
                            "viewer.window", error) ||
         !ReadScalar(window, "width", "viewer.window",
                     &configuration->window_width, error) ||
@@ -150,12 +151,21 @@ bool ParseViewer(const YAML::Node& node,
                     &configuration->window_height, error) ||
         !ReadScalar(window, "toolbar_visible", "viewer.window",
                     &configuration->toolbar_visible, error) ||
+        !ReadScalar(window, "toolbar_overlays_content", "viewer.window",
+                    &configuration->toolbar_overlays_content, error) ||
         !ReadScalar(window, "pixel_perfect", "viewer.window",
                     &configuration->pixel_perfect, error) ||
+        !ReadScalar(window, "maximized", "viewer.window",
+                    &configuration->maximized, error) ||
         !ReadScalar(window, "fullscreen", "viewer.window",
                     &configuration->fullscreen, error)) {
       return false;
     }
+  }
+
+  if (configuration->maximized && configuration->fullscreen) {
+    return Fail("viewer.window.maximized and fullscreen cannot both be true",
+                error);
   }
 
   return ValidateRange(configuration->window_width, 320, 16384,
