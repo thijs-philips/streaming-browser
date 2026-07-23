@@ -307,15 +307,19 @@ Layout changes must trigger a present even when CEF has produced no new frame.
 CEF frame arrival, layout-state arrival, window expose/resize, and reconnect all
 set one `needs_render` flag; a window timer or render loop coalesces them.
 
-the selected monitor. Reject unsupported output/overlay aspect-ratio mismatch
 In client-scaling windowed/fit mode, blocks and overlay use the same letterboxed
 content viewport. In server-scaling mode, a newly resized window may briefly
 have only the previous CEF frame available. During that transition, stretch
 the old frame and normalized source-block layout independently in X and Y to
 fill the current client area; do not preserve the stale frame's aspect ratio or
-show transient black bars. When CEF delivers a frame whose metadata dimensions
-match the requested client size, presentation becomes exact 1:1 pixels. In
-borderless fullscreen, map the full logical output to the selected monitor.
+show transient black bars. The compositor presentation child and swap chain
+remain allocated at the 3840×2160 maximum; the parent clips the top-left region
+for the current client size, avoiding flip-model surface resizes. Transitional
+CEF frames whose metadata does not exactly match the current client size are
+acquired and released but not displayed, because Chromium can briefly include
+opaque stale-size padding that would hide the native source blocks. When CEF
+delivers an exact-size frame, presentation becomes 1:1 pixels. In borderless
+fullscreen, map the full logical output to the selected monitor.
 
 The stub only draws placeholders. It does not decode video, simulate AVCC
 latency, or produce another VoIP stream in the first implementation.

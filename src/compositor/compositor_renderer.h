@@ -22,6 +22,7 @@ class CompositorRenderer final {
   bool OpenRing(const protocol::RingDefinition& definition);
   bool ConsumeFrame(const protocol::FrameMetadata& metadata);
   bool Resize(unsigned width, unsigned height);
+  void SetPresentationSize(unsigned width, unsigned height);
   void SetServerScaling(bool enabled) { server_scaling_ = enabled; }
   void SetLayout(LayoutSnapshot snapshot);
   void Render();
@@ -74,6 +75,8 @@ class CompositorRenderer final {
   LayoutSnapshot layout_;
   unsigned back_buffer_width_ = 0;
   unsigned back_buffer_height_ = 0;
+  unsigned presentation_width_ = 0;
+  unsigned presentation_height_ = 0;
   unsigned source_width_ = 0;
   unsigned source_height_ = 0;
   unsigned frame_width_ = 0;

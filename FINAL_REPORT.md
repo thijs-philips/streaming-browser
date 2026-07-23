@@ -61,7 +61,11 @@ live content size. Consumers sample just that sub-rectangle, so resizing never
 tears the ring down, never resets the stream, and tracks the window as smoothly
 as resizing a regular browser. Until the matching CEF frame arrives, the
 compositor stretches the previous frame independently in X and Y to fill the
-new client area; it deliberately does not preserve the stale aspect ratio.
+new client area; it deliberately does not preserve the stale aspect ratio. The
+compositor uses a fixed 3840×2160 child presentation canvas clipped by the
+window, and drops (while properly releasing) intermediate CEF frames whose
+metadata does not exactly match the current client size. This prevents opaque
+resize-transition padding from flashing over the native source blocks.
 The page's `ResizeObserver` reports fresh
 normalized DOM rectangles over the separate layout WebSocket, so source blocks
 continue to track headers, margins, and separators after the responsive page

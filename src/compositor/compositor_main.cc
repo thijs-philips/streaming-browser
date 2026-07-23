@@ -19,6 +19,8 @@
 namespace {
 
 constexpr wchar_t kWindowClass[] = L"StreamingBrowserCompositorWindow";
+constexpr wchar_t kRenderSurfaceClass[] =
+  L"StreamingBrowserCompositorRenderSurface";
 constexpr UINT kRingMessage = WM_APP + 1;
 constexpr UINT kFrameMessage = WM_APP + 2;
 constexpr UINT kConnectionMessage = WM_APP + 3;
@@ -26,6 +28,7 @@ constexpr UINT kLayoutMessage = WM_APP + 4;
 
 struct WindowState {
   HWND window = nullptr;
+  HWND render_surface = nullptr;
   streaming::compositor::CompositorConfiguration configuration;
   streaming::compositor::CompositorRenderer renderer;
   std::unique_ptr<streaming::viewer::StreamClient> client;
@@ -86,7 +89,8 @@ void SetFullscreen(WindowState* state, bool fullscreen) {
     MONITORINFO monitor{sizeof(MONITORINFO)};
     GetMonitorInfoW(MonitorFromWindow(state->window, MONITOR_DEFAULTTONEAREST),
                     &monitor);
-    SetWindowLongPtrW(state->window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
+    SetWindowLongPtrW(state->window, GWL_STYLE,
+                      WS_POPUP | WS_VISIBLE | WS_CLIPCHILDREN);
     SetWindowPos(state->window, HWND_TOP, monitor.rcMonitor.left,
                  monitor.rcMonitor.top,
                  monitor.rcMonitor.right - monitor.rcMonitor.left,
@@ -94,7 +98,7 @@ void SetFullscreen(WindowState* state, bool fullscreen) {
                  SWP_FRAMECHANGED);
   } else {
     SetWindowLongPtrW(state->window, GWL_STYLE,
-                      WS_OVERLAPPEDWINDOW | WS_VISIBLE);
+                      WS_OVERLAPPEDWINDOW | WS_VISIBLE | WS_CLIPCHILDREN);
     SetWindowPlacement(state->window, &state->placement);
     SetWindowPos(state->window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
@@ -145,6 +149,35 @@ void SetServerScaling(WindowState* state, bool enabled) {
   SendScalingViewport(state);
 }
 
+LRESULT CALLBACK RenderSurfaceProc(HWND window,
+                                   UINT message,
+                                   WPARAM wparam,
+                                   LPARAM lparam) {
+  const HWND parent = GetParent(window);
+  switch (message) {
+    case WM_MOUSEMOVE:
+    case WM_LBUTTONDOWN:
+    case WM_LBUTTONUP:
+    case WM_MBUTTONDOWN:
+    case WM_MBUTTONUP:
+    case WM_RBUTTONDOWN:
+    case WM_RBUTTONUP: {
+      POINT point{GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam)};
+      MapWindowPoints(window, parent, &point, 1);
+      return SendMessageW(parent, message, wparam,
+                          MAKELPARAM(point.x, point.y));
+    }
+    case WM_MOUSEWHEEL:
+    case WM_SETCURSOR:
+      return SendMessageW(parent, message, wparam, lparam);
+    case WM_ERASEBKGND:
+      return 1;
+    default:
+      break;
+  }
+  return DefWindowProcW(window, message, wparam, lparam);
+}
+
 LRESULT CALLBACK WindowProc(HWND window,
                             UINT message,
                             WPARAM wparam,
@@ -158,6 +191,13 @@ LRESULT CALLBACK WindowProc(HWND window,
       state->window = window;
       SetWindowLongPtrW(window, GWLP_USERDATA,
                         reinterpret_cast<LONG_PTR>(state));
+      state->render_surface = CreateWindowExW(
+          0, kRenderSurfaceClass, L"",
+          WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
+          0, 0, static_cast<int>(state->configuration.output_width),
+          static_cast<int>(state->configuration.output_height), window, nullptr,
+          create->hInstance, nullptr);
+      if (state->render_surface == nullptr) return -1;
       return 0;
     }
     case kRingMessage: {
@@ -196,17 +236,17 @@ LRESULT CALLBACK WindowProc(HWND window,
       std::unique_ptr<streaming::compositor::LayoutSnapshot> snapshot(
           reinterpret_cast<streaming::compositor::LayoutSnapshot*>(lparam));
       streaming::Log(
-        streaming::LogLevel::kInfo,
-        L"Compositor applied layout revision " +
-          std::to_wstring(snapshot->revision) + L" with " +
-          std::to_wstring(snapshot->viewports.size()) + L" viewports");
-        if (!snapshot->viewports.empty()) {
-        streaming::Log(
           streaming::LogLevel::kInfo,
-          L"Compositor layout sources: " +
-            Utf8ToWide(snapshot->viewports.front().label) + L" ... " +
-            Utf8ToWide(snapshot->viewports.back().label));
-        }
+          L"Compositor applied layout revision " +
+              std::to_wstring(snapshot->revision) + L" with " +
+              std::to_wstring(snapshot->viewports.size()) + L" viewports");
+      if (!snapshot->viewports.empty()) {
+        streaming::Log(
+            streaming::LogLevel::kInfo,
+            L"Compositor layout sources: " +
+                Utf8ToWide(snapshot->viewports.front().label) + L" ... " +
+                Utf8ToWide(snapshot->viewports.back().label));
+      }
       state->renderer.SetLayout(std::move(*snapshot));
       state->needs_render = true;
       return 0;
@@ -218,17 +258,13 @@ LRESULT CALLBACK WindowProc(HWND window,
         const unsigned height = std::max<unsigned>(HIWORD(lparam), 1U);
         state->client_width = width;
         state->client_height = height;
-        state->renderer.Resize(width, height);
+        state->renderer.SetPresentationSize(width, height);
         if (state->server_scaling) {
           // The producer keeps its shared ring allocated at the maximum
           // output size, so continuous per-WM_SIZE viewport updates only
           // resize the CEF view; no ring teardown or reconnect happens.
           SendScalingViewport(state);
         }
-        // Present synchronously with the size change. Deferring to the render
-        // timer lets DWM composite the previous, differently sized buffer into
-        // the new window rectangle, which shows up as edge jumping during
-        // interactive resizes (the classic flip-model resize artifact).
         state->needs_render = false;
         state->renderer.Render();
       }
@@ -355,24 +391,34 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
   window_class.lpszClassName = kWindowClass;
   if (RegisterClassExW(&window_class) == 0) return 1;
 
+  WNDCLASSEXW render_surface_class{sizeof(render_surface_class)};
+  render_surface_class.lpfnWndProc = &RenderSurfaceProc;
+  render_surface_class.hInstance = instance;
+  render_surface_class.hCursor = LoadCursor(nullptr, IDC_ARROW);
+  render_surface_class.lpszClassName = kRenderSurfaceClass;
+  if (RegisterClassExW(&render_surface_class) == 0) return 1;
+
   HWND window = CreateWindowExW(
       0, kWindowClass, L"Streaming Compositor — waiting for overlay producer",
-      WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT,
+      WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN, CW_USEDEFAULT, CW_USEDEFAULT,
       state->configuration.window_width, state->configuration.window_height,
       nullptr, nullptr, instance, state.get());
   if (window == nullptr) return 2;
-  if (!state->renderer.Initialize(window, state->configuration.output_width,
+  if (!state->renderer.Initialize(state->render_surface,
+                                  state->configuration.output_width,
                                   state->configuration.output_height)) {
     DestroyWindow(window);
     return 2;
   }
   state->renderer_ready = true;
-    RECT client_rect{};
-    GetClientRect(window, &client_rect);
-    state->client_width =
+  RECT client_rect{};
+  GetClientRect(window, &client_rect);
+  state->client_width =
       static_cast<unsigned>(std::max(client_rect.right - client_rect.left, 1L));
-    state->client_height =
+  state->client_height =
       static_cast<unsigned>(std::max(client_rect.bottom - client_rect.top, 1L));
+  state->renderer.SetPresentationSize(state->client_width,
+                                      state->client_height);
   // The configured scaling mode (server by default) takes effect as soon as
   // the producer connects; kConnectionMessage sends the initial viewport.
   state->server_scaling = state->configuration.server_scaling;

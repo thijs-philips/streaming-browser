@@ -163,6 +163,24 @@ bool CompositorRenderer::OpenRing(const protocol::RingDefinition& definition) {
 bool CompositorRenderer::ConsumeFrame(const protocol::FrameMetadata& metadata) {
   if (metadata.slot >= shared_slots_.size() || !local_frame_) return false;
   auto& slot = shared_slots_[metadata.slot];
+  if (server_scaling_ && presentation_width_ != 0 &&
+      presentation_height_ != 0 &&
+      (metadata.width != presentation_width_ ||
+       metadata.height != presentation_height_)) {
+    // Chromium can deliver resize-transition textures whose descriptor has
+    // advanced but whose page surface still contains opaque black padding from
+    // an earlier size. Displaying those frames hides the native source blocks
+    // and looks like a one-frame aspect-fit jump. Keep stretching the last
+    // exact frame until CEF catches up to the current client dimensions.
+    Log(LogLevel::kInfo,
+      L"Compositor dropped transitional CEF frame " +
+            std::to_wstring(metadata.width) + L"x" +
+            std::to_wstring(metadata.height) + L" expected=" +
+            std::to_wstring(presentation_width_) + L"x" +
+            std::to_wstring(presentation_height_));
+    const HRESULT acquired = slot.keyed_mutex->AcquireSync(1, 100);
+    return acquired == S_OK && slot.keyed_mutex->ReleaseSync(0) == S_OK;
+  }
   const HRESULT acquired = slot.keyed_mutex->AcquireSync(1, 100);
   if (acquired != S_OK) return false;
   context_->CopyResource(local_frame_.Get(), slot.texture.Get());
@@ -177,8 +195,8 @@ bool CompositorRenderer::ConsumeFrame(const protocol::FrameMetadata& metadata) {
           L"Compositor received CEF frame " +
               std::to_wstring(metadata.width) + L"x" +
               std::to_wstring(metadata.height) + L" for client " +
-              std::to_wstring(back_buffer_width_) + L"x" +
-              std::to_wstring(back_buffer_height_));
+              std::to_wstring(presentation_width_) + L"x" +
+              std::to_wstring(presentation_height_));
     }
     frame_width_ = metadata.width;
     frame_height_ = metadata.height;
@@ -189,6 +207,9 @@ bool CompositorRenderer::ConsumeFrame(const protocol::FrameMetadata& metadata) {
 
 bool CompositorRenderer::Resize(unsigned width, unsigned height) {
   if (!swap_chain_ || width == 0 || height == 0) return false;
+  if (width == back_buffer_width_ && height == back_buffer_height_) {
+    return true;
+  }
   context_->OMSetRenderTargets(0, nullptr, nullptr);
   d2d_target_.Reset();
   text_brush_.Reset();
@@ -196,6 +217,11 @@ bool CompositorRenderer::Resize(unsigned width, unsigned height) {
   const HRESULT result =
       swap_chain_->ResizeBuffers(0, width, height, DXGI_FORMAT_UNKNOWN, 0);
   return SUCCEEDED(result) && CreateBackBuffer();
+}
+
+void CompositorRenderer::SetPresentationSize(unsigned width, unsigned height) {
+  presentation_width_ = std::clamp(width, 1U, back_buffer_width_);
+  presentation_height_ = std::clamp(height, 1U, back_buffer_height_);
 }
 
 void CompositorRenderer::SetLayout(LayoutSnapshot snapshot) {
@@ -250,7 +276,12 @@ void CompositorRenderer::Render() {
     }
   }
 
-  swap_chain_->Present(1, 0);
+      const HRESULT present_result = swap_chain_->Present(1, 0);
+  if (FAILED(present_result)) {
+    Log(LogLevel::kError,
+        L"scale-trace Present failed result=" +
+            std::to_wstring(static_cast<long long>(present_result)));
+  }
 }
 
 bool CompositorRenderer::WindowToSource(int window_x,
@@ -512,29 +543,33 @@ void CompositorRenderer::ResetDevice() {
 
 D3D11_VIEWPORT CompositorRenderer::ContentViewport() const {
   D3D11_VIEWPORT viewport{};
-  if (server_scaling_ && back_buffer_width_ != 0 && back_buffer_height_ != 0) {
+  const unsigned target_width =
+      presentation_width_ != 0 ? presentation_width_ : back_buffer_width_;
+  const unsigned target_height =
+      presentation_height_ != 0 ? presentation_height_ : back_buffer_height_;
+  if (server_scaling_ && target_width != 0 && target_height != 0) {
     // While CEF catches up with a live resize, stretch the most recent frame
     // over the current client area. Once CEF delivers that size this becomes
     // a 1:1 presentation without ever exposing stale-aspect letterboxing.
-    viewport.Width = static_cast<float>(back_buffer_width_);
-    viewport.Height = static_cast<float>(back_buffer_height_);
+    viewport.Width = static_cast<float>(target_width);
+    viewport.Height = static_cast<float>(target_height);
     viewport.MaxDepth = 1.0F;
     return viewport;
   }
   const unsigned logical_width = frame_width_ != 0 ? frame_width_ : output_width_;
   const unsigned logical_height = frame_height_ != 0 ? frame_height_ : output_height_;
-  if (logical_width == 0 || logical_height == 0 || back_buffer_width_ == 0 ||
-      back_buffer_height_ == 0) {
+    if (logical_width == 0 || logical_height == 0 || target_width == 0 ||
+      target_height == 0) {
     return viewport;
   }
-  const float scale = std::min(static_cast<float>(back_buffer_width_) /
+  const float scale = std::min(static_cast<float>(target_width) /
                                    static_cast<float>(logical_width),
-                               static_cast<float>(back_buffer_height_) /
+                               static_cast<float>(target_height) /
                                    static_cast<float>(logical_height));
   viewport.Width = logical_width * scale;
   viewport.Height = logical_height * scale;
-  viewport.TopLeftX = (back_buffer_width_ - viewport.Width) * 0.5F;
-  viewport.TopLeftY = (back_buffer_height_ - viewport.Height) * 0.5F;
+  viewport.TopLeftX = (target_width - viewport.Width) * 0.5F;
+  viewport.TopLeftY = (target_height - viewport.Height) * 0.5F;
   viewport.MaxDepth = 1.0F;
   return viewport;
 }
