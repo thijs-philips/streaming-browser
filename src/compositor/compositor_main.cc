@@ -225,7 +225,12 @@ LRESULT CALLBACK WindowProc(HWND window,
           // resize the CEF view; no ring teardown or reconnect happens.
           SendScalingViewport(state);
         }
-        state->needs_render = true;
+        // Present synchronously with the size change. Deferring to the render
+        // timer lets DWM composite the previous, differently sized buffer into
+        // the new window rectangle, which shows up as edge jumping during
+        // interactive resizes (the classic flip-model resize artifact).
+        state->needs_render = false;
+        state->renderer.Render();
       }
       return 0;
     case WM_TIMER:
