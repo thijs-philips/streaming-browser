@@ -35,13 +35,18 @@ float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
 constexpr char kFrameShader[] = R"HLSL(
 Texture2D frame_texture : register(t0);
 SamplerState frame_sampler : register(s0);
+cbuffer FrameConstants : register(b0) { float4 uv_scale; }
 float4 main(float4 position : SV_Position, float2 uv : TEXCOORD0) : SV_Target {
-  float4 frame = frame_texture.Sample(frame_sampler, uv);
+  float4 frame = frame_texture.Sample(frame_sampler, uv * uv_scale.xy);
   uint2 cell = uint2(position.xy) / 16;
   float shade = ((cell.x + cell.y) & 1) ? 0.72 : 0.48;
   return float4(frame.rgb + shade.xxx * (1.0 - frame.a), 1.0);
 }
 )HLSL";
+
+struct FrameConstants {
+  float uv_scale[4];
+};
 
 bool Compile(const char* source, const char* profile, ID3DBlob** output) {
   Microsoft::WRL::ComPtr<ID3DBlob> error;
@@ -122,6 +127,8 @@ bool D3DRenderer::OpenRing(const protocol::RingDefinition& definition) {
   shared_slots_ = std::move(slots);
   source_width_ = definition.width;
   source_height_ = definition.height;
+  frame_width_ = definition.width;
+  frame_height_ = definition.height;
   has_frame_ = false;
   Log(LogLevel::kInfo, L"Viewer opened shared keyed-mutex texture ring");
   Microsoft::WRL::ComPtr<IDXGIDevice> dxgi_device;
@@ -167,6 +174,11 @@ bool D3DRenderer::ConsumeFrame(const protocol::FrameMetadata& metadata) {
     Log(LogLevel::kError, L"Viewer failed to release shared frame mutex");
     return false;
   }
+  if (metadata.width != 0 && metadata.height != 0 &&
+      metadata.width <= source_width_ && metadata.height <= source_height_) {
+    frame_width_ = metadata.width;
+    frame_height_ = metadata.height;
+  }
   has_frame_ = true;
   return true;
 }
@@ -208,8 +220,25 @@ void D3DRenderer::Render() {
 
   if (has_frame_ && local_frame_view_) {
     const D3D11_VIEWPORT frame_viewport = FrameViewport();
+    // The ring texture stays allocated at its maximum size; the live frame
+    // occupies the top-left sub-rectangle reported by frame metadata.
+    FrameConstants constants{
+        {source_width_ != 0 ? static_cast<float>(frame_width_) /
+                                  static_cast<float>(source_width_)
+                            : 1.0F,
+         source_height_ != 0 ? static_cast<float>(frame_height_) /
+                                   static_cast<float>(source_height_)
+                             : 1.0F,
+         0.0F, 0.0F}};
+    D3D11_MAPPED_SUBRESOURCE mapped{};
+    if (SUCCEEDED(context_->Map(frame_constants_.Get(), 0,
+                                D3D11_MAP_WRITE_DISCARD, 0, &mapped))) {
+      *static_cast<FrameConstants*>(mapped.pData) = constants;
+      context_->Unmap(frame_constants_.Get(), 0);
+    }
     context_->RSSetViewports(1, &frame_viewport);
     context_->PSSetShader(frame_shader_.Get(), nullptr, 0);
+    context_->PSSetConstantBuffers(0, 1, frame_constants_.GetAddressOf());
     context_->PSSetShaderResources(0, 1, local_frame_view_.GetAddressOf());
     context_->PSSetSamplers(0, 1, sampler_.GetAddressOf());
     context_->Draw(3, 0);
@@ -230,14 +259,20 @@ bool D3DRenderer::WindowToSource(int window_x, int window_y, int* source_x,
       window_y >= viewport.TopLeftY + viewport.Height) {
     return false;
   }
+  const unsigned logical_width = frame_width_ != 0 ? frame_width_ : source_width_;
+  const unsigned logical_height =
+      frame_height_ != 0 ? frame_height_ : source_height_;
+  if (logical_width == 0 || logical_height == 0) {
+    return false;
+  }
   *source_x = std::clamp(
-      static_cast<int>((window_x - viewport.TopLeftX) * source_width_ /
+      static_cast<int>((window_x - viewport.TopLeftX) * logical_width /
                        viewport.Width),
-      0, static_cast<int>(source_width_) - 1);
+      0, static_cast<int>(logical_width) - 1);
   *source_y = std::clamp(
-      static_cast<int>((window_y - viewport.TopLeftY) * source_height_ /
+      static_cast<int>((window_y - viewport.TopLeftY) * logical_height /
                        viewport.Height),
-      0, static_cast<int>(source_height_) - 1);
+      0, static_cast<int>(logical_height) - 1);
   return true;
 }
 
@@ -365,6 +400,15 @@ bool D3DRenderer::CreateShaders() {
           &frame_shader_))) {
     return false;
   }
+  D3D11_BUFFER_DESC constant_description{};
+  constant_description.ByteWidth = sizeof(FrameConstants);
+  constant_description.Usage = D3D11_USAGE_DYNAMIC;
+  constant_description.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+  constant_description.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+  if (FAILED(device_->CreateBuffer(&constant_description, nullptr,
+                                   &frame_constants_))) {
+    return false;
+  }
   D3D11_SAMPLER_DESC sampler{};
   sampler.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
   sampler.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
@@ -412,6 +456,7 @@ void D3DRenderer::ResetDevice() {
   local_frame_view_.Reset();
   local_frame_.Reset();
   sampler_.Reset();
+  frame_constants_.Reset();
   frame_shader_.Reset();
   checker_shader_.Reset();
   vertex_shader_.Reset();
@@ -425,7 +470,10 @@ void D3DRenderer::ResetDevice() {
 
 D3D11_VIEWPORT D3DRenderer::FrameViewport() const {
   D3D11_VIEWPORT viewport{};
-  if (source_width_ == 0 || source_height_ == 0 || back_buffer_width_ == 0 ||
+  const unsigned logical_width = frame_width_ != 0 ? frame_width_ : source_width_;
+  const unsigned logical_height =
+      frame_height_ != 0 ? frame_height_ : source_height_;
+  if (logical_width == 0 || logical_height == 0 || back_buffer_width_ == 0 ||
       back_buffer_height_ == 0 || content_top_ >= back_buffer_height_) {
     return viewport;
   }
@@ -435,10 +483,10 @@ D3D11_VIEWPORT D3DRenderer::FrameViewport() const {
                           ? 1.0F
                           : std::min(
                                 static_cast<float>(back_buffer_width_) /
-                                    source_width_,
-                                content_height / source_height_);
-  viewport.Width = std::max(1.0F, source_width_ * scale);
-  viewport.Height = std::max(1.0F, source_height_ * scale);
+                                    logical_width,
+                                content_height / logical_height);
+  viewport.Width = std::max(1.0F, logical_width * scale);
+  viewport.Height = std::max(1.0F, logical_height * scale);
   viewport.TopLeftX = (back_buffer_width_ - viewport.Width) * 0.5F + pan_x_;
   viewport.TopLeftY = static_cast<float>(content_top_) +
                       (content_height - viewport.Height) * 0.5F + pan_y_;

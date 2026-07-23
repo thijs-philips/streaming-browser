@@ -1,0 +1,24 @@
+# Configuration for streaming_compositor.exe.
+# Launch with: streaming_compositor.exe --config=<path-to-this-file>
+
+websocket:
+  # Layout control is deliberately loopback-only in the prototype.
+  bind_address: 127.0.0.1
+  port: 8765
+  path: /layout/v1
+
+output:
+  # Logical composition space. The first milestone requires this to match the
+  # producer's fixed CEF viewport/ring dimensions.
+  width: 3840
+  height: 2160
+
+window:
+  # Restored development-window dimensions.
+  width: 1440
+  height: 810
+  maximized: false
+  # Borderless fullscreen on the selected monitor. Mutually exclusive with
+  # maximized. F11 toggles fullscreen while developing.
+  fullscreen: false
+  monitor: 0

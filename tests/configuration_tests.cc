@@ -25,6 +25,10 @@ viewport:
   width: 1920
   height: 1080
 frame_rate: 24
+network_input:
+  enabled: true
+  bind_address: 127.0.0.1
+  port: 17831
 )YAML";
   if (!streaming::ParseProducerConfigurationYaml(producer_yaml, &producer,
                                                  &error)) {
@@ -34,7 +38,9 @@ frame_rate: 24
   if (producer.url != "https://example.org/dashboard" ||
       !producer.force_transparency || !producer.viewer_visible ||
       producer.view_width != 1920 || producer.view_height != 1080 ||
-      producer.frame_rate != 24) {
+      producer.frame_rate != 24 || !producer.network_input.enabled ||
+      producer.network_input.bind_address != "127.0.0.1" ||
+      producer.network_input.port != 17831) {
     return Fail("producer YAML values did not parse");
   }
 
@@ -81,6 +87,12 @@ window:
       error.find("between 1 and 60") == std::string::npos) {
     return Fail("out-of-range frame rate was not rejected");
   }
+  if (streaming::ParseProducerConfigurationYaml(
+          "network_input:\n  enabled: true\n  bind_address: 0.0.0.0\n",
+          &producer, &error) ||
+      error.find("must be loopback") == std::string::npos) {
+    return Fail("non-loopback network input was not rejected");
+  }
   if (streaming::ParseViewerConfigurationYaml(
           "window:\n  width: wide\n", &viewer, &error) ||
       error.find("viewer.window.width") == std::string::npos) {
@@ -99,7 +111,8 @@ window:
   }
 
   if (!streaming::ParseProducerConfigurationYaml("{}", &producer, &error) ||
-      producer.view_width != 3840 || producer.frame_rate != 30) {
+      producer.view_width != 3840 || producer.frame_rate != 30 ||
+      producer.network_input.enabled) {
     return Fail("empty producer YAML did not preserve defaults");
   }
   if (streaming::ParseViewerConfigurationYaml(

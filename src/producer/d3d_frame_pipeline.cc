@@ -120,28 +120,44 @@ bool D3DFramePipeline::CopyFromCef(
     }
     slot = &popup_slot_;
   } else {
-    if (!view_slots_[0].texture) {
-      if (!CreateViewRing(source_desc)) {
-        return false;
+    // The capture/output rings stay allocated at the maximum (4K) size so
+    // server-side scaling can resize the CEF view continuously without
+    // tearing the shared ring down. Smaller CEF frames are copied into the
+    // top-left sub-rectangle; per-frame metadata carries the content size.
+    const bool needs_new_ring =
+        !view_slots_[0].texture || source_desc.Format != view_desc_.Format ||
+        source_desc.Width > view_desc_.Width ||
+        source_desc.Height > view_desc_.Height;
+    if (needs_new_ring) {
+      if (view_slots_[0].texture) {
+        Log(LogLevel::kInfo,
+            L"CEF view no longer fits the allocated ring; creating a new "
+            L"stream generation");
+        ++generation_;
       }
-    } else if (source_desc.Width != view_desc_.Width ||
-               source_desc.Height != view_desc_.Height ||
-               source_desc.Format != view_desc_.Format) {
-      // Server-side scaling: the browser viewport changed, so build fresh
-      // capture/output rings and hand the viewer a new generation.
-      Log(LogLevel::kInfo,
-          L"CEF view descriptor changed; creating a new stream generation");
-      ++generation_;
-      if (!CreateViewRing(source_desc)) {
+      D3D11_TEXTURE2D_DESC ring_desc = source_desc;
+      ring_desc.Width =
+          std::max(source_desc.Width, protocol::kViewportWidth);
+      ring_desc.Height =
+          std::max(source_desc.Height, protocol::kViewportHeight);
+      if (!CreateViewRing(ring_desc)) {
         return false;
       }
     }
+    content_width_ = source_desc.Width;
+    content_height_ = source_desc.Height;
     slot = &view_slots_[next_view_slot_];
     latest_view_slot_ = next_view_slot_;
     next_view_slot_ = (next_view_slot_ + 1U) % view_slots_.size();
   }
 
-  context_->CopyResource(slot->texture.Get(), source.Get());
+  if (type == PET_VIEW) {
+    D3D11_BOX box{0, 0, 0, source_desc.Width, source_desc.Height, 1};
+    context_->CopySubresourceRegion(slot->texture.Get(), 0, 0, 0, 0,
+                                    source.Get(), 0, &box);
+  } else {
+    context_->CopyResource(slot->texture.Get(), source.Get());
+  }
   context_->End(slot->completion.Get());
   if (!WaitForCopy(slot->completion.Get())) {
     FailFastGpu(L"CEF frame copy did not complete inside OnAcceleratedPaint", E_FAIL);
@@ -586,14 +602,18 @@ bool D3DFramePipeline::CompositePopup(ID3D11Texture2D* destination) {
     return true;
   }
 
-  const int left = std::clamp(popup_bounds_.x, 0,
-                              static_cast<int>(view_desc_.Width));
-  const int top = std::clamp(popup_bounds_.y, 0,
-                             static_cast<int>(view_desc_.Height));
-  const int right = std::clamp(popup_bounds_.x + popup_bounds_.width, 0,
-                               static_cast<int>(view_desc_.Width));
-  const int bottom = std::clamp(popup_bounds_.y + popup_bounds_.height, 0,
-                                static_cast<int>(view_desc_.Height));
+  const int content_width = content_width_ != 0
+                                ? static_cast<int>(content_width_)
+                                : static_cast<int>(view_desc_.Width);
+  const int content_height = content_height_ != 0
+                                 ? static_cast<int>(content_height_)
+                                 : static_cast<int>(view_desc_.Height);
+  const int left = std::clamp(popup_bounds_.x, 0, content_width);
+  const int top = std::clamp(popup_bounds_.y, 0, content_height);
+  const int right =
+      std::clamp(popup_bounds_.x + popup_bounds_.width, 0, content_width);
+  const int bottom =
+      std::clamp(popup_bounds_.y + popup_bounds_.height, 0, content_height);
   if (right <= left || bottom <= top) {
     return true;
   }

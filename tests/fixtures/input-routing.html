@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Input Routing Fixture</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: #061b3a; color: white; }
+    main { padding: 96px; display: grid; grid-template-columns: 1.45fr 1fr; gap: 48px; }
+    header { grid-column: 1 / -1; }
+    h1 { font-size: 68px; margin: 0 0 12px; }
+    h2 { margin: 0 0 24px; font-size: 34px; }
+    p, li { font-size: 28px; line-height: 1.45; }
+    .subtitle { color: #b8cdec; margin: 0; }
+    .card { border: 2px solid #2d5b91; border-radius: 28px; padding: 38px;
+      background: #092550; }
+    .emergency { grid-column: 1 / -1; display: flex; align-items: center;
+      justify-content: space-between; gap: 36px; border-color: #ffb454;
+      background: #4b2810; }
+    kbd { white-space: nowrap; font: 700 34px ui-monospace, monospace;
+      padding: 18px 26px; border: 3px solid #ffd39b; border-radius: 18px;
+      background: #1c1010; color: #fff4df; }
+    #target { min-height: 430px; border: 8px solid #49dcb1; border-radius: 32px;
+      display: grid; place-content: center; text-align: center; font-size: 42px;
+      background: #0c3165; }
+    #target.active { background: #146b52; }
+    #route-status { display: inline-flex; align-items: center; gap: 16px;
+      font-size: 28px; font-weight: 700; color: #ffcf75; }
+    #route-status::before { content: ''; width: 20px; height: 20px;
+      border-radius: 50%; background: currentColor; }
+    #route-status.receiving { color: #49dcb1; }
+    output { display: block; margin-top: 30px; font: 30px ui-monospace, monospace;
+      white-space: pre-wrap; }
+    ol { padding-left: 42px; margin: 0; }
+    .note { color: #b8cdec; font-size: 24px; }
+    @media (max-width: 1400px) {
+      main { padding: 48px; grid-template-columns: 1fr; gap: 30px; }
+      header, .emergency { grid-column: 1; }
+      h1 { font-size: 54px; }
+      .emergency { display: grid; justify-content: start; }
+      kbd { white-space: normal; font-size: 28px; }
+      p, li { font-size: 22px; }
+      #target { min-height: 320px; font-size: 34px; }
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>USB input routing test</h1>
+      <p class="subtitle">Only the explicitly selected USB keyboard and mouse should change this page.</p>
+    </header>
+    <section class="emergency card">
+      <div>
+        <h2>Emergency stop / disable routing</h2>
+        <p>Press every key on the same routed USB keyboard. The routing agent stops and viewer input returns.</p>
+      </div>
+      <kbd>Ctrl + Alt + Shift + F12</kbd>
+    </section>
+    <section class="card">
+      <div id="route-status">Waiting for routed input</div>
+      <div id="target" tabindex="0">Move, click, scroll, or type<br>with the routed USB devices</div>
+      <output id="state">last=waiting
+held=none
+clicks=0
+moves=0
+wheel=0
+pointer=-,-</output>
+    </section>
+    <section class="card">
+      <h2>Isolation checks</h2>
+      <ol>
+        <li>The built-in keyboard must still control Windows, but must not change this page after the USB route is active.</li>
+        <li>The Bluetooth mouse must still move the Windows cursor, but must not increment this page's counters.</li>
+        <li>The routed USB keyboard and mouse must update the live panel.</li>
+        <li>The emergency chord on the built-in keyboard must do nothing.</li>
+        <li>The same chord on the routed USB keyboard must stop routing.</li>
+      </ol>
+      <p class="note">Prototype limitation: routed USB devices are observed, not suppressed, so they still produce ordinary Windows input too.</p>
+    </section>
+  </main>
+  <script>
+    const target = document.querySelector('#target');
+    const state = document.querySelector('#state');
+    const routeStatus = document.querySelector('#route-status');
+    const held = new Set();
+    let clicks = 0;
+    let moves = 0;
+    let wheel = 0;
+    function render(event) {
+      routeStatus.textContent = 'Receiving input';
+      routeStatus.classList.add('receiving');
+      state.textContent = [
+        `last=${event.type}`,
+        `held=${[...held].sort().join('+') || 'none'}`,
+        `clicks=${clicks}`,
+        `moves=${moves}`,
+        `wheel=${wheel}`,
+        `pointer=${event.clientX ?? '-'},${event.clientY ?? '-'}`,
+      ].join('\n');
+      document.title = `InputRoute ${event.type} keys=${held.size} clicks=${clicks} moves=${moves} wheel=${wheel}`;
+    }
+    addEventListener('keydown', event => { held.add(event.code); render(event); });
+    addEventListener('keyup', event => { held.delete(event.code); render(event); });
+    addEventListener('blur', event => { held.clear(); target.classList.remove('active'); render(event); });
+    addEventListener('mousemove', event => { moves++; render(event); });
+    addEventListener('wheel', event => { wheel += Math.sign(event.deltaY || event.deltaX); render(event); }, {passive: true});
+    addEventListener('mousedown', event => {
+      clicks++;
+      target.classList.add('active');
+      if (location.hash !== '#routed') location.hash = 'routed';
+      render(event);
+    });
+    addEventListener('mouseup', event => { target.classList.remove('active'); render(event); });
+  </script>
+</body>
+</html>

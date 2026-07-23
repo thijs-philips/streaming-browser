@@ -58,6 +58,10 @@ class D3DFramePipeline final {
   [[nodiscard]] const D3D11_TEXTURE2D_DESC& view_description() const {
     return view_desc_;
   }
+  [[nodiscard]] std::uint32_t content_width() const { return content_width_; }
+  [[nodiscard]] std::uint32_t content_height() const {
+    return content_height_;
+  }
 
  private:
   struct CaptureSlot {
@@ -101,6 +105,8 @@ class D3DFramePipeline final {
   std::array<OutputSlot, kOutputSlots> output_slots_{};
   D3D11_TEXTURE2D_DESC view_desc_{};
   D3D11_TEXTURE2D_DESC popup_desc_{};
+  std::uint32_t content_width_ = 0;
+  std::uint32_t content_height_ = 0;
   std::size_t next_view_slot_ = 0;
   std::size_t latest_view_slot_ = 0;
   std::uint64_t frame_id_ = 0;

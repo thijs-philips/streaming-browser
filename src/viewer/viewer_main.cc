@@ -30,39 +30,33 @@ constexpr UINT kNavigationMessage = WM_APP + 3;
 constexpr UINT kConnectionMessage = WM_APP + 4;
 constexpr UINT kVisibilityMessage = WM_APP + 5;
 constexpr UINT kCursorMessage = WM_APP + 6;
-constexpr int kUrlBarHeight = 38;
+constexpr int kToolbarHeight = 38;
 constexpr int kBackButton = 100;
 constexpr int kForwardButton = 101;
 constexpr int kReloadButton = 102;
 constexpr int kGoButton = 103;
 constexpr int kUrlEdit = 104;
-constexpr int kToggleUrlBar = 200;
+constexpr int kToggleToolbar = 200;
 constexpr int kTogglePixelPerfect = 201;
 
 struct WindowState {
   HWND window = nullptr;
   HWND render_surface = nullptr;
-  HWND url_bar_background = nullptr;
+  HWND toolbar_background = nullptr;
   HWND back = nullptr;
   HWND forward = nullptr;
   HWND reload = nullptr;
   HWND go = nullptr;
   HWND url = nullptr;
-  HMENU menu_bar = nullptr;
   streaming::viewer::D3DRenderer renderer;
   std::unique_ptr<streaming::viewer::StreamClient> client;
   bool connected = false;
-  bool menu_visible = true;
-  bool url_bar_visible = true;
-  bool url_bar_overlays_content = true;
+  bool toolbar_visible = true;
+  bool toolbar_overlays_content = true;
   bool updating_url = false;
   bool url_editing = false;
   bool needs_render = true;
   bool initial_pixel_perfect = false;
-  bool server_scaling = false;
-  bool viewport_dirty = false;
-  std::uint32_t last_sent_viewport_width = 0;
-  std::uint32_t last_sent_viewport_height = 0;
   std::uint64_t last_title_frame = 0;
   std::string startup_navigation;
   HCURSOR page_cursor = LoadCursor(nullptr, IDC_ARROW);
@@ -84,12 +78,12 @@ std::uint16_t CefModifiers() {
 bool PagePoint(WindowState* state, LPARAM lparam, int* x, int* y) {
   const int window_x = GET_X_LPARAM(lparam);
   const int window_y = GET_Y_LPARAM(lparam);
-  if (state->url_bar_visible && window_y < kUrlBarHeight) {
+  if (state->toolbar_visible && window_y < kToolbarHeight) {
     return false;
   }
   const int render_top =
-      state->url_bar_visible && !state->url_bar_overlays_content
-          ? kUrlBarHeight
+      state->toolbar_visible && !state->toolbar_overlays_content
+          ? kToolbarHeight
           : 0;
   return state->renderer.WindowToSource(window_x, window_y - render_top,
                                         x, y);
@@ -236,25 +230,17 @@ bool LoadViewerConfiguration(int argument_count,
                                      &configuration->window_height, error)) {
       return false;
     } else if (argument == L"--toolbar") {
-      configuration->show_toolbar = true;
-    } else if (argument == L"--no-toolbar") {
-      configuration->show_toolbar = false;
-    } else if (argument == L"--url-bar") {
       configuration->show_url_bar = true;
-    } else if (argument == L"--no-url-bar") {
+    } else if (argument == L"--no-toolbar") {
       configuration->show_url_bar = false;
-    } else if (argument == L"--url-bar-overlays-content") {
+    } else if (argument == L"--toolbar-overlays-content") {
       configuration->url_bar_overlays_content = true;
-    } else if (argument == L"--content-below-url-bar") {
+    } else if (argument == L"--content-below-toolbar") {
       configuration->url_bar_overlays_content = false;
     } else if (argument == L"--pixel-perfect") {
       configuration->pixel_perfect = true;
     } else if (argument == L"--fit") {
       configuration->pixel_perfect = false;
-    } else if (argument == L"--server-scaling") {
-      configuration->scaling = "server";
-    } else if (argument == L"--client-scaling") {
-      configuration->scaling = "client";
     } else if (argument == L"--fullscreen") {
       configuration->fullscreen = true;
       configuration->maximized = false;
@@ -270,51 +256,23 @@ bool LoadViewerConfiguration(int argument_count,
   return true;
 }
 
-void ReportViewportIfChanged(WindowState* state) {
-  if (!state->server_scaling || !state->client || !state->connected) {
-    return;
-  }
-  RECT surface{};
-  if (!GetClientRect(state->render_surface, &surface)) {
-    return;
-  }
-  const auto width = static_cast<std::uint32_t>(
-      std::clamp<LONG>(surface.right - surface.left, 320, 16384));
-  const auto height = static_cast<std::uint32_t>(
-      std::clamp<LONG>(surface.bottom - surface.top, 240, 16384));
-  if (width == state->last_sent_viewport_width &&
-      height == state->last_sent_viewport_height) {
-    return;
-  }
-  if (state->client->SendViewportSize(width, height)) {
-    state->last_sent_viewport_width = width;
-    state->last_sent_viewport_height = height;
-    streaming::Log(streaming::LogLevel::kInfo,
-                   L"Viewer requested server-side viewport " +
-                       std::to_wstring(width) + L"x" +
-                       std::to_wstring(height));
-  }
-}
-
-void SetUrlBarVisible(WindowState* state, bool visible) {
-  state->url_bar_visible = visible;
+void SetToolbarVisible(WindowState* state, bool visible) {
+  state->toolbar_visible = visible;
   const int show = visible ? SW_SHOW : SW_HIDE;
-  ShowWindow(state->url_bar_background, show);
+  ShowWindow(state->toolbar_background, show);
   ShowWindow(state->back, show);
   ShowWindow(state->forward, show);
   ShowWindow(state->reload, show);
   ShowWindow(state->go, show);
   ShowWindow(state->url, show);
-  if (state->menu_bar != nullptr) {
-    CheckMenuItem(state->menu_bar, kToggleUrlBar,
-                  MF_BYCOMMAND | (visible ? MF_CHECKED : MF_UNCHECKED));
-  }
+  CheckMenuItem(GetMenu(state->window), kToggleToolbar,
+                MF_BYCOMMAND | (visible ? MF_CHECKED : MF_UNCHECKED));
   RECT client{};
   GetClientRect(state->window, &client);
   const int width = client.right - client.left;
   const int height = client.bottom - client.top;
   const int render_top =
-      visible && !state->url_bar_overlays_content ? kUrlBarHeight : 0;
+      visible && !state->toolbar_overlays_content ? kToolbarHeight : 0;
   const int render_height = std::max(height - render_top, 1);
   MoveWindow(state->render_surface, 0, render_top, width, render_height, TRUE);
   state->renderer.Resize(static_cast<unsigned>(std::max(width, 1)),
@@ -331,7 +289,6 @@ void SetFullscreen(WindowState* state, bool fullscreen) {
     MONITORINFO monitor{sizeof(MONITORINFO)};
     GetMonitorInfoW(MonitorFromWindow(state->window, MONITOR_DEFAULTTONEAREST),
                     &monitor);
-    SetMenu(state->window, nullptr);
     SetWindowLongPtrW(state->window, GWL_STYLE, WS_POPUP | WS_VISIBLE);
     SetWindowPos(state->window, HWND_TOP, monitor.rcMonitor.left,
                  monitor.rcMonitor.top,
@@ -341,9 +298,6 @@ void SetFullscreen(WindowState* state, bool fullscreen) {
   } else {
     SetWindowLongPtrW(state->window, GWL_STYLE,
                       WS_OVERLAPPEDWINDOW | WS_VISIBLE);
-    if (state->menu_visible && state->menu_bar != nullptr) {
-      SetMenu(state->window, state->menu_bar);
-    }
     SetWindowPlacement(state->window, &state->window_placement);
     SetWindowPos(state->window, nullptr, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
@@ -351,27 +305,24 @@ void SetFullscreen(WindowState* state, bool fullscreen) {
   state->needs_render = true;
 }
 
-void CreateViewerChrome(WindowState* state, HINSTANCE instance) {
+void CreateToolbar(WindowState* state, HINSTANCE instance) {
   HMENU menu = CreateMenu();
   HMENU view_menu = CreatePopupMenu();
   AppendMenuW(view_menu,
-              MF_STRING | (state->url_bar_visible ? MF_CHECKED : 0),
-              kToggleUrlBar,
-              L"Show URL bar");
+              MF_STRING | (state->toolbar_visible ? MF_CHECKED : 0),
+              kToggleToolbar,
+              L"Show toolbar");
   AppendMenuW(view_menu,
               MF_STRING | (state->initial_pixel_perfect ? MF_CHECKED : 0),
               kTogglePixelPerfect,
               L"1:1 pixel mode (Ctrl+Arrows to pan)");
   AppendMenuW(menu, MF_POPUP, reinterpret_cast<UINT_PTR>(view_menu), L"View");
-  state->menu_bar = menu;
-  if (state->menu_visible) {
-    SetMenu(state->window, menu);
-  }
+  SetMenu(state->window, menu);
   const DWORD control_style =
-      WS_CHILD | (state->url_bar_visible ? WS_VISIBLE : 0);
-    state->url_bar_background = CreateWindowW(
+      WS_CHILD | (state->toolbar_visible ? WS_VISIBLE : 0);
+    state->toolbar_background = CreateWindowW(
       L"STATIC", L"", control_style | SS_GRAYRECT,
-      0, 0, 1, kUrlBarHeight, state->window, nullptr, instance, nullptr);
+      0, 0, 1, kToolbarHeight, state->window, nullptr, instance, nullptr);
   state->back = CreateWindowW(L"BUTTON", L"←", control_style,
                               6, 6, 32, 26, state->window,
                                 reinterpret_cast<HMENU>(
@@ -448,7 +399,7 @@ LRESULT CALLBACK WindowProc(HWND window,
           WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
           0, 0, 1, 1, window, nullptr, create->hInstance, nullptr);
       if (state->render_surface == nullptr) return -1;
-      CreateViewerChrome(state, create->hInstance);
+      CreateToolbar(state, create->hInstance);
       if (!state->renderer.Initialize(state->render_surface)) return -1;
       state->renderer.SetPixelPerfect(state->initial_pixel_perfect);
       SetTimer(window, 1, 16, nullptr);
@@ -514,12 +465,6 @@ LRESULT CALLBACK WindowProc(HWND window,
             streaming::protocol::MessageType::kNavigate,
             std::exchange(state->startup_navigation, {}));
       }
-      if (state->connected) {
-        // A new session starts from the producer's own size; resend ours.
-        state->last_sent_viewport_width = 0;
-        state->last_sent_viewport_height = 0;
-        state->viewport_dirty = true;
-      }
       if (!state->connected) {
         SetWindowTextW(window,
                        L"Streaming Browser Viewer — waiting for producer");
@@ -556,20 +501,17 @@ LRESULT CALLBACK WindowProc(HWND window,
       }
       break;
     case WM_COMMAND:
-      if (LOWORD(wparam) == kToggleUrlBar) {
-        SetUrlBarVisible(state, !state->url_bar_visible);
+      if (LOWORD(wparam) == kToggleToolbar) {
+        SetToolbarVisible(state, !state->toolbar_visible);
         return 0;
       }
       if (LOWORD(wparam) == kTogglePixelPerfect) {
         state->renderer.SetPixelPerfect(!state->renderer.pixel_perfect());
         state->needs_render = true;
-        if (state->menu_bar != nullptr) {
-          CheckMenuItem(
-              state->menu_bar, kTogglePixelPerfect,
-              MF_BYCOMMAND |
-                  (state->renderer.pixel_perfect() ? MF_CHECKED
-                                                   : MF_UNCHECKED));
-        }
+        CheckMenuItem(
+            GetMenu(window), kTogglePixelPerfect,
+            MF_BYCOMMAND |
+                (state->renderer.pixel_perfect() ? MF_CHECKED : MF_UNCHECKED));
         return 0;
       }
       if (LOWORD(wparam) == kUrlEdit && HIWORD(wparam) == EN_CHANGE &&
@@ -606,29 +548,22 @@ LRESULT CALLBACK WindowProc(HWND window,
         const int width = LOWORD(lparam);
         const int height = HIWORD(lparam);
         const int render_top =
-            state->url_bar_visible && !state->url_bar_overlays_content
-                ? kUrlBarHeight
+            state->toolbar_visible && !state->toolbar_overlays_content
+                ? kToolbarHeight
                 : 0;
         const int render_height = std::max(height - render_top, 1);
         MoveWindow(state->render_surface, 0, render_top, width,
                    render_height, TRUE);
         state->renderer.Resize(static_cast<unsigned>(std::max(width, 1)),
                                static_cast<unsigned>(render_height));
-        MoveWindow(state->url_bar_background, 0, 0, width,
-                   kUrlBarHeight, TRUE);
+        MoveWindow(state->toolbar_background, 0, 0, width,
+                   kToolbarHeight, TRUE);
         MoveWindow(state->url, 146, 6, std::max(width - 200, 100), 26, TRUE);
         MoveWindow(state->go, std::max(width - 48, 146), 6, 42, 26, TRUE);
         state->needs_render = true;
-        state->viewport_dirty = true;
       }
       return 0;
     case WM_TIMER:
-      // Debounce server-side viewport reports to the timer tick so drag
-      // resizing does not flood the producer with browser resizes.
-      if (state->viewport_dirty) {
-        state->viewport_dirty = false;
-        ReportViewportIfChanged(state);
-      }
       // Only present when content actually changed; redundant 4K presents
       // cost measurable GPU and DWM composition time. A hidden window keeps
       // its dirty flag so the first visible frame is current.
@@ -756,10 +691,6 @@ LRESULT CALLBACK WindowProc(HWND window,
       return 1;
     case WM_DESTROY:
       KillTimer(window, 1);
-      if (state->menu_bar != nullptr && GetMenu(window) == nullptr) {
-        DestroyMenu(state->menu_bar);
-        state->menu_bar = nullptr;
-      }
       if (state->client) state->client->Stop();
       PostQuitMessage(0);
       return 0;
@@ -806,10 +737,8 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
 
   auto state = std::make_unique<WindowState>();
   state->startup_navigation = configuration.navigate;
-  state->server_scaling = configuration.scaling == "server";
-  state->menu_visible = configuration.show_toolbar;
-  state->url_bar_visible = configuration.show_url_bar;
-  state->url_bar_overlays_content = configuration.url_bar_overlays_content;
+  state->toolbar_visible = configuration.show_url_bar;
+  state->toolbar_overlays_content = configuration.url_bar_overlays_content;
   state->initial_pixel_perfect = configuration.pixel_perfect;
   HWND window = CreateWindowExW(
       0, kWindowClass, L"Streaming Browser Viewer — waiting for producer",

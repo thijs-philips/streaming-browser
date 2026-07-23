@@ -1,0 +1,13 @@
+# Compositor demo with the experimental custom-HID route enabled.
+url: about:blank
+force_transparency: true
+viewer_visible: true
+alpha_probe_enabled: false
+viewport:
+  width: 3840
+  height: 2160
+frame_rate: 30
+network_input:
+  enabled: true
+  bind_address: 127.0.0.1
+  port: 17831

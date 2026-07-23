@@ -19,7 +19,6 @@ class D3DRenderer final {
   bool ConsumeFrame(const protocol::FrameMetadata& metadata);
   bool Resize(unsigned width, unsigned height);
   void Render();
-  void SetContentTop(unsigned pixels) { content_top_ = pixels; }
   void SetPixelPerfect(bool enabled);
   void Pan(float delta_x, float delta_y);
   [[nodiscard]] bool pixel_perfect() const { return pixel_perfect_; }
@@ -53,6 +52,7 @@ class D3DRenderer final {
   Microsoft::WRL::ComPtr<ID3D11VertexShader> vertex_shader_;
   Microsoft::WRL::ComPtr<ID3D11PixelShader> checker_shader_;
   Microsoft::WRL::ComPtr<ID3D11PixelShader> frame_shader_;
+  Microsoft::WRL::ComPtr<ID3D11Buffer> frame_constants_;
   Microsoft::WRL::ComPtr<ID3D11SamplerState> sampler_;
   Microsoft::WRL::ComPtr<ID3D11Texture2D> local_frame_;
   Microsoft::WRL::ComPtr<ID3D11ShaderResourceView> local_frame_view_;
@@ -63,6 +63,8 @@ class D3DRenderer final {
   unsigned content_top_ = 0;
   unsigned source_width_ = 0;
   unsigned source_height_ = 0;
+  unsigned frame_width_ = 0;
+  unsigned frame_height_ = 0;
   bool has_frame_ = false;
   bool pixel_perfect_ = false;
   float pan_x_ = 0.0F;

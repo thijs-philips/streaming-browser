@@ -46,9 +46,7 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
                                    std::move(value)));
       },
       [this](std::uint32_t width, std::uint32_t height) {
-        CefPostTask(TID_UI,
-                    base::BindOnce(&BrowserClient::OnViewerViewport, this,
-                                   width, height));
+        QueueViewerViewport(width, height);
       },
       [this] {
         CefPostTask(
@@ -78,6 +76,33 @@ BrowserClient::BrowserClient(DWORD launcher_thread_id,
       },
       configuration.alpha_probe_enabled);
   stream_server_->Start();
+  if (configuration.network_input.enabled) {
+    NetworkInputServerOptions options;
+    options.bind_address = configuration.network_input.bind_address;
+    options.port = static_cast<std::uint16_t>(configuration.network_input.port);
+    options.view_width = configuration.view_width;
+    options.view_height = configuration.view_height;
+    network_input_server_ = std::make_unique<NetworkInputServer>(
+        std::move(options),
+        [this](protocol::InputEvent event) {
+          CefPostTask(
+              TID_UI,
+              base::BindOnce(&BrowserClient::OnNetworkInput, this, event));
+        },
+        [this](bool active) {
+          CefPostTask(
+              TID_UI,
+              base::BindOnce(&BrowserClient::OnNetworkRouteActivity, this,
+                             active));
+        },
+        [](std::wstring message) { Log(LogLevel::kInfo, message); });
+    std::wstring error;
+    if (!network_input_server_->Start(&error)) {
+      Log(LogLevel::kError,
+          L"Could not start loopback network input server: " + error);
+      network_input_server_.reset();
+    }
+  }
 }
 
 void BrowserClient::GetViewRect(CefRefPtr<CefBrowser>, CefRect& rect) {
@@ -138,10 +163,23 @@ void BrowserClient::OnAcceleratedPaint(
   if (!pipeline_->CopyFromCef(type, dirty_rects, info)) {
     Log(LogLevel::kError, L"Accelerated frame import/copy failed");
     PostThreadMessageW(launcher_thread_id_, kCaptureFailureMessage, 0, 0);
-  } else if (type == PET_VIEW &&
-             (pipeline_->frame_id() == 1 || pipeline_->frame_id() % 30 == 0)) {
-    PostThreadMessageW(launcher_thread_id_, kCaptureFrameMessage,
-                       static_cast<WPARAM>(pipeline_->frame_id()), 0);
+    return;
+  }
+  if (type == PET_VIEW) {
+    if ((pipeline_->content_width() !=
+             static_cast<std::uint32_t>(view_width_) ||
+         pipeline_->content_height() !=
+             static_cast<std::uint32_t>(view_height_)) &&
+        !viewport_retry_pending_) {
+      viewport_retry_pending_ = true;
+      CefPostDelayedTask(
+          TID_UI, base::BindOnce(&BrowserClient::RetryViewerViewport, this),
+          50);
+    }
+    if (pipeline_->frame_id() == 1 || pipeline_->frame_id() % 30 == 0) {
+      PostThreadMessageW(launcher_thread_id_, kCaptureFrameMessage,
+                         static_cast<WPARAM>(pipeline_->frame_id()), 0);
+    }
   }
 }
 
@@ -190,6 +228,10 @@ bool BrowserClient::DoClose(CefRefPtr<CefBrowser>) {
 
 void BrowserClient::OnBeforeClose(CefRefPtr<CefBrowser>) {
   CEF_REQUIRE_UI_THREAD();
+  if (network_input_server_) {
+    network_input_server_->Stop();
+    network_input_server_.reset();
+  }
   if (stream_server_) {
     stream_server_->Stop();
     stream_server_.reset();
@@ -354,6 +396,81 @@ void BrowserClient::OnFrameReleased(std::uint32_t slot,
 
 void BrowserClient::OnViewerInput(protocol::InputEvent event) {
   CEF_REQUIRE_UI_THREAD();
+  if (event.kind == protocol::InputKind::kFocus) {
+    viewer_focused_ = event.value1 != 0;
+  }
+  if (network_input_active_) {
+    return;
+  }
+  viewer_mouse_x_ = event.x;
+  viewer_mouse_y_ = event.y;
+  if (event.kind == protocol::InputKind::kKeyDown) {
+    viewer_held_keys_[event.value1] = event.value2;
+  } else if (event.kind == protocol::InputKind::kKeyUp) {
+    viewer_held_keys_.erase(event.value1);
+  } else if (event.kind == protocol::InputKind::kMouseDown &&
+             event.value1 >= 0 && event.value1 < 3) {
+    viewer_mouse_buttons_ |= 1U << static_cast<unsigned int>(event.value1);
+  } else if (event.kind == protocol::InputKind::kMouseUp &&
+             event.value1 >= 0 && event.value1 < 3) {
+    viewer_mouse_buttons_ &= ~(1U << static_cast<unsigned int>(event.value1));
+  }
+  DispatchInput(event);
+}
+
+void BrowserClient::OnNetworkInput(protocol::InputEvent event) {
+  CEF_REQUIRE_UI_THREAD();
+  if (network_input_active_) {
+    DispatchInput(event);
+  }
+}
+
+void BrowserClient::OnNetworkRouteActivity(bool active) {
+  CEF_REQUIRE_UI_THREAD();
+  if (active == network_input_active_) return;
+  if (active) {
+    ReleaseViewerInput();
+    network_input_active_ = true;
+    return;
+  }
+  network_input_active_ = false;
+  if (viewer_focused_) {
+    protocol::InputEvent focus;
+    focus.kind = protocol::InputKind::kFocus;
+    focus.value1 = 1;
+    DispatchInput(focus);
+  }
+}
+
+void BrowserClient::ReleaseViewerInput() {
+  CEF_REQUIRE_UI_THREAD();
+  for (const auto& [key, native_code] : viewer_held_keys_) {
+    protocol::InputEvent event;
+    event.kind = protocol::InputKind::kKeyUp;
+    event.value1 = key;
+    event.value2 = native_code | static_cast<std::int32_t>(0xC0000000U);
+    DispatchInput(event);
+  }
+  viewer_held_keys_.clear();
+  for (int button = 0; button < 3; ++button) {
+    if ((viewer_mouse_buttons_ & (1U << static_cast<unsigned int>(button))) == 0)
+      continue;
+    protocol::InputEvent event;
+    event.kind = protocol::InputKind::kMouseUp;
+    event.x = viewer_mouse_x_;
+    event.y = viewer_mouse_y_;
+    event.value1 = button;
+    event.value2 = 1;
+    DispatchInput(event);
+  }
+  viewer_mouse_buttons_ = 0;
+  protocol::InputEvent capture_lost;
+  capture_lost.kind = protocol::InputKind::kCaptureLost;
+  DispatchInput(capture_lost);
+}
+
+void BrowserClient::DispatchInput(protocol::InputEvent event) {
+  CEF_REQUIRE_UI_THREAD();
   if (!browser_ || !browser_->IsValid()) {
     return;
   }
@@ -479,6 +596,49 @@ void BrowserClient::OnViewerIme(protocol::ImeEvent event) {
   }
 }
 
+void BrowserClient::QueueViewerViewport(std::uint32_t width,
+                                        std::uint32_t height) {
+  const std::uint64_t packed =
+      (static_cast<std::uint64_t>(width) << 32U) | height;
+  pending_viewport_.store(packed, std::memory_order_release);
+  if (!viewport_task_pending_.exchange(true, std::memory_order_acq_rel)) {
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(&BrowserClient::ApplyPendingViewerViewport, this), 33);
+  }
+}
+
+void BrowserClient::ApplyPendingViewerViewport() {
+  CEF_REQUIRE_UI_THREAD();
+  const std::uint64_t packed =
+      pending_viewport_.exchange(0, std::memory_order_acq_rel);
+  if (packed != 0) {
+    OnViewerViewport(static_cast<std::uint32_t>(packed >> 32U),
+                     static_cast<std::uint32_t>(packed));
+  }
+
+  viewport_task_pending_.store(false, std::memory_order_release);
+  if (pending_viewport_.load(std::memory_order_acquire) != 0 &&
+      !viewport_task_pending_.exchange(true, std::memory_order_acq_rel)) {
+    CefPostDelayedTask(
+        TID_UI,
+        base::BindOnce(&BrowserClient::ApplyPendingViewerViewport, this), 33);
+  }
+}
+
+void BrowserClient::RetryViewerViewport() {
+  CEF_REQUIRE_UI_THREAD();
+  viewport_retry_pending_ = false;
+  if (!browser_ || !browser_->IsValid() ||
+      (pipeline_->content_width() == static_cast<std::uint32_t>(view_width_) &&
+       pipeline_->content_height() ==
+           static_cast<std::uint32_t>(view_height_))) {
+    return;
+  }
+  browser_->GetHost()->WasResized();
+  browser_->GetHost()->Invalidate(PET_VIEW);
+}
+
 void BrowserClient::OnViewerViewport(std::uint32_t width,
                                      std::uint32_t height) {
   CEF_REQUIRE_UI_THREAD();
@@ -494,6 +654,7 @@ void BrowserClient::OnViewerViewport(std::uint32_t width,
           std::to_wstring(new_width) + L"x" + std::to_wstring(new_height));
   if (browser_ && browser_->IsValid()) {
     browser_->GetHost()->WasResized();
+    browser_->GetHost()->Invalidate(PET_VIEW);
   }
 }
 

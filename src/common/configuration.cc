@@ -88,7 +88,8 @@ bool ParseProducer(const YAML::Node& node,
   if (!RequireMap(node, "producer configuration", error) ||
       !RejectUnknownKeys(node,
                          {"url", "force_transparency", "viewer_visible",
-                          "alpha_probe_enabled", "viewport", "frame_rate"},
+                          "alpha_probe_enabled", "viewport", "frame_rate",
+                          "network_input"},
                          "producer", error)) {
     return false;
   }
@@ -120,12 +121,34 @@ bool ParseProducer(const YAML::Node& node,
     }
   }
 
+  if (const YAML::Node network_input = node["network_input"]) {
+    if (!RequireMap(network_input, "producer.network_input", error) ||
+        !RejectUnknownKeys(network_input,
+                           {"enabled", "bind_address", "port"},
+                           "producer.network_input", error) ||
+        !ReadScalar(network_input, "enabled", "producer.network_input",
+                    &configuration->network_input.enabled, error) ||
+        !ReadScalar(network_input, "bind_address", "producer.network_input",
+                    &configuration->network_input.bind_address, error) ||
+        !ReadScalar(network_input, "port", "producer.network_input",
+                    &configuration->network_input.port, error)) {
+      return false;
+    }
+    if (configuration->network_input.bind_address != "127.0.0.1" &&
+        configuration->network_input.bind_address != "::1") {
+      return Fail("producer.network_input.bind_address must be loopback",
+                  error);
+    }
+  }
+
   return ValidateRange(configuration->view_width, 320, 16384,
                        "producer.viewport.width", error) &&
          ValidateRange(configuration->view_height, 240, 16384,
                        "producer.viewport.height", error) &&
          ValidateRange(configuration->frame_rate, 1, 60,
-                       "producer.frame_rate", error);
+                       "producer.frame_rate", error) &&
+         ValidateRange(configuration->network_input.port, 1024, 65535,
+                       "producer.network_input.port", error);
 }
 
 bool ParseViewer(const YAML::Node& node,

@@ -1,0 +1,14 @@
+# Producer side of the compositor demo.
+url: about:blank
+force_transparency: true
+viewer_visible: true
+alpha_probe_enabled: false
+viewport:
+  width: 3840
+  height: 2160
+frame_rate: 30
+network_input:
+  # Optional custom-HID ingress. Leave false for the compositor-only demo.
+  enabled: false
+  bind_address: 127.0.0.1
+  port: 17831

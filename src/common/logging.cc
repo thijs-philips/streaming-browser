@@ -44,9 +44,11 @@ void Log(LogLevel level, std::wstring_view message) {
   directory.append(L"\\StreamingBrowser");
   CreateDirectoryW(directory.c_str(), nullptr);
   const std::wstring path = directory + L"\\app.log";
-  HANDLE file = CreateFileW(path.c_str(), FILE_APPEND_DATA, FILE_SHARE_READ,
-                            nullptr, OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL,
-                            nullptr);
+  // Multiple processes (producer, viewer, compositor) append concurrently;
+  // sharing write access prevents silently dropped lines.
+  HANDLE file = CreateFileW(path.c_str(), FILE_APPEND_DATA,
+                            FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr,
+                            OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
   if (file == INVALID_HANDLE_VALUE) {
     return;
   }

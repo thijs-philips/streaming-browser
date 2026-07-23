@@ -5,6 +5,7 @@
 #include <atomic>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "include/cef_client.h"
 #include "include/cef_context_menu_handler.h"
@@ -16,6 +17,7 @@
 #include "include/cef_request_handler.h"
 #include "src/common/configuration.h"
 #include "src/producer/d3d_frame_pipeline.h"
+#include "src/producer/network_input_server.h"
 #include "src/producer/stream_server.h"
 
 namespace streaming::producer {
@@ -127,8 +129,15 @@ class BrowserClient final : public CefClient,
   void OnViewerReady();
   void OnFrameReleased(std::uint32_t slot, std::uint64_t frame_id);
   void OnViewerInput(protocol::InputEvent event);
+  void OnNetworkInput(protocol::InputEvent event);
+  void OnNetworkRouteActivity(bool active);
+  void DispatchInput(protocol::InputEvent event);
+  void ReleaseViewerInput();
   void OnViewerIme(protocol::ImeEvent event);
   void OnViewerCommand(protocol::MessageType type, std::string value);
+  void QueueViewerViewport(std::uint32_t width, std::uint32_t height);
+  void ApplyPendingViewerViewport();
+  void RetryViewerViewport();
   void OnViewerViewport(std::uint32_t width, std::uint32_t height);
   void OnViewerDisconnected();
   void PublishNavigationState();
@@ -136,6 +145,9 @@ class BrowserClient final : public CefClient,
   DWORD launcher_thread_id_ = 0;
   int view_width_ = 3840;
   int view_height_ = 2160;
+  std::atomic<std::uint64_t> pending_viewport_{0};
+  std::atomic<bool> viewport_task_pending_{false};
+  bool viewport_retry_pending_ = false;
   bool force_transparency_ = false;
   bool viewer_visible_ = false;
   bool software_fallback_reported_ = false;
@@ -146,6 +158,13 @@ class BrowserClient final : public CefClient,
   CefRefPtr<CefBrowser> browser_;
   std::unique_ptr<D3DFramePipeline> pipeline_;
   std::unique_ptr<StreamServer> stream_server_;
+  std::unique_ptr<NetworkInputServer> network_input_server_;
+  bool network_input_active_ = false;
+  bool viewer_focused_ = false;
+  std::unordered_map<std::int32_t, std::int32_t> viewer_held_keys_;
+  std::uint32_t viewer_mouse_buttons_ = 0;
+  int viewer_mouse_x_ = 0;
+  int viewer_mouse_y_ = 0;
 
   IMPLEMENT_REFCOUNTING(BrowserClient);
   DISALLOW_COPY_AND_ASSIGN(BrowserClient);

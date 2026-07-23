@@ -23,6 +23,17 @@ FetchContent_Declare(yaml-cpp
   GIT_TAG f7320141120f720aecc4c32be25586e7da9eb978)
 FetchContent_MakeAvailable(yaml-cpp)
 
+FetchContent_Declare(boost_headers
+  URL https://github.com/boostorg/boost/releases/download/boost-1.90.0/boost-1.90.0-b2-nodocs.zip
+  URL_HASH SHA256=7860F2694B76B51874881D7BFE1A5E9BA40435571C76CA559521E512A178782A
+  DOWNLOAD_EXTRACT_TIMESTAMP TRUE)
+FetchContent_GetProperties(boost_headers)
+if(NOT boost_headers_POPULATED)
+  FetchContent_Populate(boost_headers)
+endif()
+add_library(boost_headers INTERFACE)
+target_include_directories(boost_headers INTERFACE "${boost_headers_SOURCE_DIR}")
+
 set(CEF_VERSION "150.0.14+g7c1aa68+chromium-150.0.7871.129" CACHE STRING "Pinned CEF version")
 set(CEF_PLATFORM "windows64")
 set(CEF_ARCHIVE_SHA1 "626fb887a04e9c5668f13eae8a39c37880cb818e")

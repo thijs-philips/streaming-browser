@@ -10,10 +10,15 @@ set(PRODUCER_SOURCES
   d3d_frame_pipeline.h
   launcher_window.cc
   launcher_window.h
+  network_input_server.cc
+  network_input_server.h
   producer_entry.cc
   stream_server.cc
   stream_server.h
 )
+
+set_source_files_properties(network_input_server.cc PROPERTIES
+  COMPILE_OPTIONS "/wd4267")
 
 if(NOT TARGET libcef_lib)
   ADD_LOGICAL_TARGET("libcef_lib" "${CEF_LIB_DEBUG}" "${CEF_LIB_RELEASE}")
@@ -46,12 +51,15 @@ target_compile_features(${PRODUCER_TARGET} PRIVATE cxx_std_20)
 target_include_directories(${PRODUCER_TARGET} PRIVATE "${CMAKE_SOURCE_DIR}")
 target_link_libraries(${PRODUCER_TARGET} PRIVATE
   streaming_common
+  streaming_input_routing
+  boost_headers
   libcef_lib
   libcef_dll_wrapper
   ${CEF_STANDARD_LIBS}
   d3d11.lib
   d3dcompiler.lib
   dxgi.lib
+  ws2_32.lib
   shell32.lib)
 add_dependencies(${PRODUCER_TARGET} libcef_dll_wrapper)
 

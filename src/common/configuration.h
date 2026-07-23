@@ -6,6 +6,12 @@
 
 namespace streaming {
 
+struct NetworkInputConfiguration {
+  bool enabled = false;
+  std::string bind_address = "127.0.0.1";
+  int port = 17831;
+};
+
 struct ProducerConfiguration {
   std::string url = "https://example.com";
   bool force_transparency = false;
@@ -14,6 +20,7 @@ struct ProducerConfiguration {
   int view_width = 3840;
   int view_height = 2160;
   int frame_rate = 30;
+  NetworkInputConfiguration network_input;
 };
 
 struct ViewerConfiguration {

@@ -13,3 +13,11 @@ third_party/cef/
 *.idb
 *.tlog
 *.lastbuildstate
+
+# Copilot Extensions (managed by vscode-copilot-extensions)
+.github/chatmodes/
+.github/instructions/
+.github/prompts/
+.github/agents/
+.github/skills/
+.github/mcp-servers/

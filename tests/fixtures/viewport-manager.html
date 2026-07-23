@@ -1,0 +1,767 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Simulated FlexVision Output - 3840x2160</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --divider-size: 3px;
+      --toolbar-height: 68px;
+      --rail-width: 10.1%;
+      --surface: #030303;
+      --toolbar: #292927;
+      --toolbar-edge: #4b4b48;
+      --divider: #474744;
+      --divider-active: #8a8a84;
+      --muted: #666662;
+      --muted-strong: #999992;
+      --focus: #0b5ed7;
+      --source-inset: 10px;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
+    body {
+      width: 100%;
+      height: 100%;
+      margin: 0;
+      overflow: hidden;
+      background: var(--surface);
+      font-family: "Neue Frutiger World", "Segoe UI", Arial, sans-serif;
+      font-weight: 400;
+      user-select: none;
+    }
+
+    button {
+      font: inherit;
+    }
+
+    .application {
+      display: grid;
+      grid-template-rows: var(--toolbar-height) minmax(0, 1fr);
+      width: 100%;
+      height: 100%;
+      color: var(--muted);
+      background: var(--surface);
+    }
+
+    .toolbar {
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      min-width: 0;
+      padding: 0 28px;
+      border-top: 2px solid #3a3a38;
+      border-bottom: var(--divider-size) solid var(--toolbar-edge);
+      background: linear-gradient(#2e2e2b, #242422);
+      box-shadow: inset 0 2px #353532;
+    }
+
+    .toolbar-group {
+      display: flex;
+      align-items: stretch;
+      height: 100%;
+    }
+
+    .toolbar-button {
+      display: inline-flex;
+      align-items: center;
+      gap: 18px;
+      min-width: 0;
+      height: 100%;
+      padding: 0 28px;
+      border: 0;
+      border-right: 2px solid rgb(255 255 255 / 3%);
+      color: #c3c3bd;
+      background: transparent;
+      font-size: 19px;
+      line-height: 1;
+      cursor: default;
+    }
+
+    .toolbar-button:first-child {
+      border-left: 2px solid rgb(0 0 0 / 24%);
+    }
+
+    .toolbar-button:hover,
+    .toolbar-button:focus-visible {
+      color: #efefe9;
+      background: rgb(255 255 255 / 5%);
+      outline: none;
+    }
+
+    .toolbar-button:active {
+      background: rgb(0 0 0 / 18%);
+    }
+
+    .toolbar-icon {
+      width: 30px;
+      height: 30px;
+      flex: 0 0 auto;
+    }
+
+    .toolbar-spacer {
+      flex: 1 1 auto;
+    }
+
+    .toolbar-tools {
+      display: flex;
+      align-items: center;
+      gap: 17px;
+      margin-right: 44px;
+      color: #8d8d88;
+    }
+
+    .toolbar-tool {
+      display: grid;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      place-items: center;
+      color: inherit;
+      background: transparent;
+    }
+
+    .toolbar-tool:hover,
+    .toolbar-tool:focus-visible {
+      color: #d0d0ca;
+      outline: 2px solid #6e6e68;
+      outline-offset: 5px;
+    }
+
+    .wordmark {
+      margin-right: 10px;
+      color: #a9a9a3;
+      font-size: 33px;
+      font-weight: 800;
+      letter-spacing: 0.015em;
+      line-height: 1;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-columns: var(--rail-width) minmax(0, 1fr);
+      min-width: 0;
+      min-height: 0;
+      background: var(--surface);
+    }
+
+    .system-rail {
+      position: relative;
+      display: grid;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      border-right: var(--divider-size) solid var(--divider);
+      place-items: center;
+      background: #050505;
+    }
+
+    .system-message {
+      width: 76%;
+      margin-top: 26px;
+      overflow-wrap: anywhere;
+      color: #8d8d87;
+      font-size: 18px;
+      line-height: 1.32;
+      text-align: center;
+    }
+
+    .viewport-grid {
+      position: relative;
+      display: grid;
+      grid-template-columns:
+        minmax(0, 0.275fr) var(--divider-size)
+        minmax(0, 0.275fr) var(--divider-size)
+        minmax(0, 0.45fr);
+      grid-template-rows:
+        minmax(0, 0.5fr) var(--divider-size)
+        minmax(0, 0.5fr);
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: var(--divider);
+    }
+
+    .viewport {
+      position: relative;
+      min-width: 0;
+      min-height: 0;
+      overflow: hidden;
+      background: #000;
+      box-shadow: inset 0 0 0 1px rgb(255 255 255 / 3%);
+    }
+
+    html[data-mode="overlay"],
+    html[data-mode="overlay"] body,
+    html[data-mode="overlay"] .application,
+    html[data-mode="overlay"] .workspace,
+    html[data-mode="overlay"] .viewport-grid,
+    html[data-mode="overlay"] .viewport {
+      background: transparent;
+    }
+
+    html[data-mode="overlay"] .system-rail {
+      background: rgb(5 5 5 / 88%);
+    }
+
+    html[data-mode="overlay"] .viewport-header {
+      background: rgb(53 53 50 / 97%);
+    }
+
+    .viewport[data-column="1"] { grid-column: 1; }
+    .viewport[data-column="2"] { grid-column: 3; }
+    .viewport[data-column="3"] { grid-column: 5; }
+    .viewport[data-row="1"] { grid-row: 1; }
+    .viewport[data-row="2"] { grid-row: 3; }
+
+    .viewport-header {
+      position: absolute;
+      z-index: 2;
+      top: 0;
+      right: 0;
+      left: 0;
+      display: flex;
+      align-items: center;
+      height: 82px;
+      padding: 0 22px;
+      pointer-events: none;
+      background: #353532;
+      box-shadow: inset 0 -1px rgb(255 255 255 / 3%);
+    }
+
+    .viewport-title {
+      min-width: 0;
+      overflow: hidden;
+      color: #a3a39c;
+      font-size: 24px;
+      line-height: 1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .viewport-actions {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      color: #3e3e3a;
+    }
+
+    .viewport-action {
+      display: grid;
+      width: 22px;
+      height: 22px;
+      place-items: center;
+    }
+
+    .splitter {
+      z-index: 5;
+      position: relative;
+      background: var(--divider);
+      touch-action: none;
+    }
+
+    .splitter::before {
+      position: absolute;
+      content: "";
+    }
+
+    .splitter--vertical {
+      grid-row: 1 / 4;
+      cursor: col-resize;
+    }
+
+    .splitter--vertical::before {
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 28px;
+      transform: translateX(-50%);
+    }
+
+    .splitter--one { grid-column: 2; }
+    .splitter--two { grid-column: 4; }
+
+    .splitter--horizontal {
+      z-index: 6;
+      grid-row: 2;
+      grid-column: 1 / 6;
+      cursor: row-resize;
+    }
+
+    .splitter--horizontal::before {
+      top: 50%;
+      right: 0;
+      left: 0;
+      height: 28px;
+      transform: translateY(-50%);
+    }
+
+    .splitter:hover,
+    .splitter:focus-visible,
+    .splitter.is-active {
+      background: var(--divider-active);
+      outline: none;
+    }
+
+    .splitter:focus-visible {
+      box-shadow: 0 0 0 2px var(--focus);
+    }
+
+    body.is-resizing,
+    body.is-resizing * {
+      cursor: inherit !important;
+    }
+
+    body.is-resizing-horizontal { cursor: row-resize; }
+    body.is-resizing-vertical { cursor: col-resize; }
+
+    @media (max-width: 800px) {
+      .toolbar {
+        padding: 0 8px;
+      }
+
+      .toolbar-button {
+        gap: 8px;
+        padding: 0 10px;
+      }
+
+      .toolbar-tools,
+      .wordmark {
+        display: none;
+      }
+    }
+
+    @media (max-width: 500px) {
+      .system-message {
+        display: none;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * {
+        scroll-behavior: auto !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="application" aria-label="FlexVision viewport manager">
+    <header class="toolbar">
+      <nav class="toolbar-group" aria-label="Viewport controls">
+        <button class="toolbar-button" type="button" aria-label="Applications">
+          <svg class="toolbar-icon" viewBox="0 0 32 32" aria-hidden="true">
+            <rect x="2.5" y="2.5" width="27" height="27" rx="1.5" fill="#151514" stroke="#777770"/>
+            <rect x="6" y="6" width="8.5" height="8.5" fill="#40a8c5"/>
+            <rect x="17.5" y="6" width="8.5" height="8.5" fill="#e6c54a"/>
+            <rect x="6" y="17.5" width="8.5" height="8.5" fill="#72ad58"/>
+            <rect x="17.5" y="17.5" width="8.5" height="8.5" fill="#db6b57"/>
+          </svg>
+          <span>Applications</span>
+        </button>
+        <button id="reset-layout" class="toolbar-button" type="button"
+                title="Restore the default viewport layout">
+          <svg class="toolbar-icon" viewBox="0 0 32 32" aria-hidden="true">
+            <path d="M3 10.5h26v17H3z" fill="#161615" stroke="#777770"/>
+            <path d="M3.8 8.7 6.7 3.8h5.2L9 8.7zm7.1 0 2.9-4.9H19l-2.9 4.9zm7.2 0L21 3.8h5.2l-2.9 4.9z" fill="#a3a39d"/>
+            <path d="M3 10.5h26" stroke="#c2c2bb" stroke-width="1.3"/>
+          </svg>
+          <span>Presets</span>
+        </button>
+      </nav>
+
+      <div class="toolbar-spacer"></div>
+      <div class="toolbar-tools" aria-label="Display controls">
+        <button class="toolbar-tool" type="button" title="Layout locked" aria-label="Layout locked">
+          <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+            <path d="M7.5 10V7a4.5 4.5 0 0 1 9 0v3M5 10.5h14v10H5z" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+        <button id="reset-layout-icon" class="toolbar-tool" type="button"
+                title="Reset layout" aria-label="Reset viewport layout">
+          <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+            <path d="M5 5h14v14H5zM8 5v14m8-14v14M5 12h14" fill="none" stroke="currentColor" stroke-width="1.3"/>
+          </svg>
+        </button>
+        <button class="toolbar-tool" type="button" title="Fit output" aria-label="Fit output">
+          <svg viewBox="0 0 24 24" width="100%" height="100%" aria-hidden="true">
+            <path d="M4 9V4h5M15 4h5v5M20 15v5h-5M9 20H4v-5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+          </svg>
+        </button>
+      </div>
+      <div class="wordmark" aria-label="Philips">PHILIPS</div>
+    </header>
+
+    <section class="workspace">
+      <aside class="system-rail" aria-label="System status">
+        <p class="system-message">
+          The X-ray system is<br>
+          switched off. The Review<br>
+          application and the X-ray<br>
+          application are not<br>
+          available.
+        </p>
+      </aside>
+
+      <section id="viewport-grid" class="viewport-grid" aria-label="Resizable viewports">
+        <article class="viewport" data-column="1" data-row="1"
+            data-viewport-id="upper-left" data-source-id="fp1"
+            data-source-label="FP1">
+          <header class="viewport-header">
+            <span class="viewport-title">Unknown application (view only)</span>
+            <span class="viewport-actions" aria-hidden="true">
+              <span class="viewport-action">⌁</span>
+              <span class="viewport-action">□</span>
+            </span>
+          </header>
+        </article>
+
+        <article class="viewport" data-column="2" data-row="1"
+           data-viewport-id="upper-middle" data-source-id="fp2"
+           data-source-label="FP2">
+          <header class="viewport-header">
+            <span class="viewport-title"></span>
+          </header>
+        </article>
+
+        <article class="viewport" data-column="3" data-row="1"
+            data-viewport-id="upper-right" data-source-id="fp3"
+            data-source-label="FP3">
+          <header class="viewport-header">
+            <span class="viewport-title"></span>
+          </header>
+        </article>
+
+        <article class="viewport" data-column="1" data-row="2"
+           data-viewport-id="lower-left" data-source-id="fp4"
+           data-source-label="FP4">
+          <header class="viewport-header">
+            <span class="viewport-title">Live X-ray</span>
+            <span class="viewport-actions" aria-hidden="true">
+              <span class="viewport-action">⌁</span>
+              <span class="viewport-action">□</span>
+            </span>
+          </header>
+        </article>
+
+        <article class="viewport" data-column="2" data-row="2"
+            data-viewport-id="lower-middle" data-source-id="fp5"
+            data-source-label="FP5">
+          <header class="viewport-header">
+            <span class="viewport-title">Reference 1 / Dual Fluoro</span>
+            <span class="viewport-actions" aria-hidden="true">
+              <span class="viewport-action">⌁</span>
+              <span class="viewport-action">□</span>
+            </span>
+          </header>
+        </article>
+
+        <article class="viewport" data-column="3" data-row="2"
+            data-viewport-id="lower-right" data-source-id="fp6"
+            data-source-label="FP6">
+          <header class="viewport-header">
+            <span class="viewport-title">Review</span>
+            <span class="viewport-actions" aria-hidden="true">
+              <span class="viewport-action">⌁</span>
+              <span class="viewport-action">□</span>
+            </span>
+          </header>
+        </article>
+
+        <div id="column-splitter-one"
+             class="splitter splitter--vertical splitter--one"
+             role="separator" tabindex="0" aria-orientation="vertical"
+             aria-label="Resize the first and second viewport columns"
+             aria-valuemin="12" aria-valuemax="43" aria-valuenow="28"></div>
+        <div id="column-splitter-two"
+             class="splitter splitter--vertical splitter--two"
+             role="separator" tabindex="0" aria-orientation="vertical"
+             aria-label="Resize the second and third viewport columns"
+             aria-valuemin="40" aria-valuemax="88" aria-valuenow="55"></div>
+        <div id="row-splitter"
+             class="splitter splitter--horizontal"
+             role="separator" tabindex="0" aria-orientation="horizontal"
+             aria-label="Resize the top and bottom viewport rows"
+             aria-valuemin="18" aria-valuemax="82" aria-valuenow="50"></div>
+      </section>
+    </section>
+  </main>
+
+  <script src="compositor-client.js"></script>
+  <script>
+    (() => {
+      const DEFAULT_LAYOUT = Object.freeze({
+        columns: Object.freeze([0.275, 0.275, 0.45]),
+        topRow: 0.5
+      });
+      const STORAGE_KEY = 'streaming-browser.viewport-manager.layout.v1';
+      const grid = document.querySelector('#viewport-grid');
+      const columnSplitterOne = document.querySelector('#column-splitter-one');
+      const columnSplitterTwo = document.querySelector('#column-splitter-two');
+      const rowSplitter = document.querySelector('#row-splitter');
+      const splitters = [columnSplitterOne, columnSplitterTwo, rowSplitter];
+      const viewports = [...document.querySelectorAll('.viewport[data-viewport-id]')];
+      const parameters = new URLSearchParams(location.search);
+      const overlayMode = parameters.get('mode') === 'overlay';
+      document.documentElement.dataset.mode = overlayMode ? 'overlay' : 'preview';
+      const compositor = window.CompositorClient.connect();
+
+      let layout = readLayout();
+      let activeDrag = null;
+
+      function defaultLayout() {
+        return {
+          columns: [...DEFAULT_LAYOUT.columns],
+          topRow: DEFAULT_LAYOUT.topRow
+        };
+      }
+
+      function isValidLayout(candidate) {
+        if (!candidate || !Array.isArray(candidate.columns) || candidate.columns.length !== 3) {
+          return false;
+        }
+
+        const values = [...candidate.columns, candidate.topRow];
+        if (!values.every(value => Number.isFinite(value) && value > 0 && value < 1)) {
+          return false;
+        }
+
+        const total = candidate.columns.reduce((sum, value) => sum + value, 0);
+        return Math.abs(total - 1) < 0.002;
+      }
+
+      function readLayout() {
+        try {
+          const stored = JSON.parse(localStorage.getItem(STORAGE_KEY));
+          return isValidLayout(stored) ? stored : defaultLayout();
+        } catch {
+          return defaultLayout();
+        }
+      }
+
+      function saveLayout() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(layout));
+        } catch {
+          // Persistence is optional when local file storage is restricted.
+        }
+      }
+
+      function applyLayout() {
+        const [first, second, third] = layout.columns;
+        grid.style.gridTemplateColumns = [
+          `minmax(0, ${first}fr)`,
+          'var(--divider-size)',
+          `minmax(0, ${second}fr)`,
+          'var(--divider-size)',
+          `minmax(0, ${third}fr)`
+        ].join(' ');
+        grid.style.gridTemplateRows = [
+          `minmax(0, ${layout.topRow}fr)`,
+          'var(--divider-size)',
+          `minmax(0, ${1 - layout.topRow}fr)`
+        ].join(' ');
+
+        columnSplitterOne.setAttribute('aria-valuenow', String(Math.round(first * 100)));
+        columnSplitterTwo.setAttribute('aria-valuenow', String(Math.round((first + second) * 100)));
+        rowSplitter.setAttribute('aria-valuenow', String(Math.round(layout.topRow * 100)));
+        reportLayout();
+      }
+
+      function reportLayout() {
+        requestAnimationFrame(() => {
+          const output = document.documentElement.getBoundingClientRect();
+          for (const viewport of viewports) {
+            const rect = viewport.getBoundingClientRect();
+            const header = viewport.querySelector('.viewport-header');
+            const headerHeight = header ? header.getBoundingClientRect().height : 0;
+            const inset = Number.parseFloat(getComputedStyle(document.documentElement)
+              .getPropertyValue('--source-inset')) || 0;
+            const sourceLeft = rect.left + inset;
+            const sourceTop = rect.top + headerHeight + inset;
+            const sourceWidth = Math.max(1, rect.width - inset * 2);
+            const sourceHeight = Math.max(1, rect.height - headerHeight - inset * 2);
+            compositor.setViewport({
+              viewportId: viewport.dataset.viewportId,
+              sourceId: viewport.dataset.sourceId,
+              label: viewport.dataset.sourceLabel,
+              rect: {
+                x: (sourceLeft - output.left) / output.width,
+                y: (sourceTop - output.top) / output.height,
+                width: sourceWidth / output.width,
+                height: sourceHeight / output.height
+              }
+            });
+          }
+        });
+      }
+
+      function clamp(value, minimum, maximum) {
+        return Math.min(maximum, Math.max(minimum, value));
+      }
+
+      function dividerSize() {
+        return columnSplitterOne.getBoundingClientRect().width;
+      }
+
+      function minimumColumnFraction(availableWidth) {
+        const minimumPixels = Math.min(Math.max(48, availableWidth * 0.12), availableWidth / 3);
+        return minimumPixels / availableWidth;
+      }
+
+      function minimumRowFraction(availableHeight) {
+        const minimumPixels = Math.min(Math.max(48, availableHeight * 0.18), availableHeight / 2);
+        return minimumPixels / availableHeight;
+      }
+
+      function beginDrag(event, axis, index) {
+        if (!event.isPrimary || (event.pointerType === 'mouse' && event.button !== 0)) {
+          return;
+        }
+
+        event.preventDefault();
+        const splitter = event.currentTarget;
+        activeDrag = { axis, index, pointerId: event.pointerId, splitter };
+        splitter.classList.add('is-active');
+        splitter.setPointerCapture(event.pointerId);
+        document.body.classList.add('is-resizing');
+        document.body.classList.add(
+          axis === 'column' ? 'is-resizing-vertical' : 'is-resizing-horizontal'
+        );
+      }
+
+      function updateDrag(event) {
+        if (!activeDrag || event.pointerId !== activeDrag.pointerId) {
+          return;
+        }
+
+        event.preventDefault();
+        const bounds = grid.getBoundingClientRect();
+        const divider = dividerSize();
+
+        if (activeDrag.axis === 'column') {
+          const available = Math.max(1, bounds.width - divider * 2);
+          const minimum = minimumColumnFraction(available);
+          const [first, second, third] = layout.columns;
+
+          if (activeDrag.index === 0) {
+            const fixedBoundary = first + second;
+            const pointerFraction = (event.clientX - bounds.left - divider / 2) / available;
+            const nextFirst = clamp(pointerFraction, minimum, fixedBoundary - minimum);
+            layout.columns = [nextFirst, fixedBoundary - nextFirst, third];
+          } else {
+            const pointerFraction = (event.clientX - bounds.left - divider * 1.5) / available;
+            const nextBoundary = clamp(pointerFraction, first + minimum, 1 - minimum);
+            layout.columns = [first, nextBoundary - first, 1 - nextBoundary];
+          }
+        } else {
+          const available = Math.max(1, bounds.height - divider);
+          const minimum = minimumRowFraction(available);
+          const pointerFraction = (event.clientY - bounds.top - divider / 2) / available;
+          layout.topRow = clamp(pointerFraction, minimum, 1 - minimum);
+        }
+
+        applyLayout();
+      }
+
+      function endDrag(event) {
+        if (!activeDrag || event.pointerId !== activeDrag.pointerId) {
+          return;
+        }
+
+        const { splitter, pointerId } = activeDrag;
+        activeDrag = null;
+        splitter.classList.remove('is-active');
+        if (splitter.hasPointerCapture(pointerId)) {
+          splitter.releasePointerCapture(pointerId);
+        }
+        document.body.classList.remove(
+          'is-resizing',
+          'is-resizing-vertical',
+          'is-resizing-horizontal'
+        );
+        saveLayout();
+      }
+
+      function nudgeSplitter(event, axis, index) {
+        const direction = axis === 'column'
+          ? (event.key === 'ArrowLeft' ? -1 : event.key === 'ArrowRight' ? 1 : 0)
+          : (event.key === 'ArrowUp' ? -1 : event.key === 'ArrowDown' ? 1 : 0);
+        if (direction === 0) {
+          return;
+        }
+
+        event.preventDefault();
+        const amount = (event.shiftKey ? 0.025 : 0.01) * direction;
+        const bounds = grid.getBoundingClientRect();
+        const divider = dividerSize();
+
+        if (axis === 'column') {
+          const minimum = minimumColumnFraction(Math.max(1, bounds.width - divider * 2));
+          const [first, second, third] = layout.columns;
+          if (index === 0) {
+            const nextFirst = clamp(first + amount, minimum, first + second - minimum);
+            layout.columns = [nextFirst, first + second - nextFirst, third];
+          } else {
+            const boundary = clamp(first + second + amount, first + minimum, 1 - minimum);
+            layout.columns = [first, boundary - first, 1 - boundary];
+          }
+        } else {
+          const minimum = minimumRowFraction(Math.max(1, bounds.height - divider));
+          layout.topRow = clamp(layout.topRow + amount, minimum, 1 - minimum);
+        }
+
+        applyLayout();
+        saveLayout();
+      }
+
+      function resetLayout() {
+        layout = defaultLayout();
+        applyLayout();
+        try {
+          localStorage.removeItem(STORAGE_KEY);
+        } catch {
+          // Reset still succeeds even if local file storage is restricted.
+        }
+      }
+
+      function connectSplitter(splitter, axis, index) {
+        splitter.addEventListener('pointerdown', event => beginDrag(event, axis, index));
+        splitter.addEventListener('pointermove', updateDrag);
+        splitter.addEventListener('pointerup', endDrag);
+        splitter.addEventListener('pointercancel', endDrag);
+        splitter.addEventListener('lostpointercapture', event => {
+          if (activeDrag && event.pointerId === activeDrag.pointerId) {
+            endDrag(event);
+          }
+        });
+        splitter.addEventListener('keydown', event => nudgeSplitter(event, axis, index));
+        splitter.addEventListener('dblclick', resetLayout);
+      }
+
+      connectSplitter(columnSplitterOne, 'column', 0);
+      connectSplitter(columnSplitterTwo, 'column', 1);
+      connectSplitter(rowSplitter, 'row', 0);
+      document.querySelector('#reset-layout').addEventListener('click', resetLayout);
+      document.querySelector('#reset-layout-icon').addEventListener('click', resetLayout);
+
+      window.addEventListener('blur', () => {
+        if (activeDrag) {
+          endDrag({ pointerId: activeDrag.pointerId });
+        }
+      });
+
+      new ResizeObserver(reportLayout).observe(document.documentElement);
+
+      applyLayout();
+    })();
+  </script>
+</body>
+</html>

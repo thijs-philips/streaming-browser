@@ -35,6 +35,7 @@ New-Item -ItemType Directory -Path (Join-Path $package 'config') -Force | Out-Nu
 Copy-Item (Join-Path $root 'config\*.yaml') (Join-Path $package 'config')
 New-Item -ItemType Directory -Path (Join-Path $package 'fixtures') -Force | Out-Null
 Copy-Item (Join-Path $root 'tests\fixtures\*.html') (Join-Path $package 'fixtures')
+Copy-Item (Join-Path $root 'tests\fixtures\*.js') (Join-Path $package 'fixtures')
 
 @'
 $ErrorActionPreference = 'Stop'
@@ -70,6 +71,29 @@ Start-Process (Join-Path $PSScriptRoot 'streaming_viewer.exe') `
     -ArgumentList @('--no-toolbar', '--content-below-toolbar', '--fit')
 Write-Host 'Viewport manager started. Drag any internal divider to resize adjacent viewports.'
 '@ | Set-Content (Join-Path $package 'run-viewport-manager.ps1') -Encoding UTF8
+
+@'
+[CmdletBinding()]
+param([switch]$EnableInputRouting)
+$ErrorActionPreference = 'Stop'
+$fixture = (Resolve-Path (Join-Path $PSScriptRoot 'fixtures\viewport-manager.html')).Path
+$url = ([Uri]::new($fixture).AbsoluteUri + '?mode=overlay')
+$producerConfig = if ($EnableInputRouting) {
+    Join-Path $PSScriptRoot 'config\producer.compositor-input.yaml'
+} else {
+    Join-Path $PSScriptRoot 'config\producer.compositor.yaml'
+}
+$compositorConfig = Join-Path $PSScriptRoot 'config\compositor.example.yaml'
+Get-Process streaming_browser, streaming_viewer, streaming_compositor -ErrorAction SilentlyContinue |
+    Stop-Process -Force -ErrorAction SilentlyContinue
+Start-Process (Join-Path $PSScriptRoot 'streaming_compositor.exe') `
+    -WorkingDirectory $PSScriptRoot `
+    -ArgumentList "--config=`"$compositorConfig`""
+Start-Process (Join-Path $PSScriptRoot 'streaming_browser.exe') `
+    -WorkingDirectory $PSScriptRoot `
+    -ArgumentList @("--config=`"$producerConfig`"", "--url=$url")
+Write-Host 'Compositor demo started. Drag separators; F11 toggles fullscreen; F12 toggles client/server scaling.'
+'@ | Set-Content (Join-Path $package 'run-compositor-demo.ps1') -Encoding UTF8
 
 @'
 [CmdletBinding()]

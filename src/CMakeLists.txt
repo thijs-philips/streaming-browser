@@ -1,3 +1,5 @@
 add_subdirectory(common)
+add_subdirectory(input_routing)
 add_subdirectory(producer)
 add_subdirectory(viewer)
+add_subdirectory(compositor)
