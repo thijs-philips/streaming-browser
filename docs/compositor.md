@@ -344,15 +344,16 @@ window:
   maximized: false
   fullscreen: false
   monitor: 0
+  scaling: server
 ```
 
 Windowed mode uses `WS_OVERLAPPEDWINDOW`. Fullscreen uses borderless `WS_POPUP`
 on the configured monitor. `maximized` and `fullscreen` are mutually exclusive.
 The compositor has no menu, URL bar, navigation commands, or debug-viewer
-checkerboard. F11 toggles borderless fullscreen. F12 toggles client/server
-scaling for development: client mode restores the configured logical output
-size, while server mode continuously reports the compositor's exact client size
-to CEF for 1:1 pixels. The producer keeps the shared ring allocated at the
+checkerboard. F11 toggles borderless fullscreen. `window.scaling` selects the
+startup mode (server by default) and F12 toggles it at runtime: client mode
+restores the configured logical output size, while server mode continuously
+reports the compositor's exact client size to CEF for 1:1 pixels. The producer keeps the shared ring allocated at the
 3840×2160 maximum and copies each CEF frame into its top-left sub-rectangle;
 per-frame metadata carries the live content size, so sub-4K server-side resizes
 never create a new ring generation or reset the stream. DOM resize observation

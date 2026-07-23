@@ -57,6 +57,42 @@ try {
         $null = $delay.WaitOne(100)
     }
     if (-not $compositor) { throw 'Compositor did not connect to the overlay producer' }
+
+    # Server scaling is the configured default: connecting must immediately
+    # request the compositor's exact client size from CEF.
+    $startupDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    $serverDefault = $false
+    while ([DateTime]::UtcNow -lt $startupDeadline) {
+        $contents = Get-Content $log -Raw
+        if ($contents -match 'Compositor switched to server scaling; requested CEF viewport \d+x\d+') {
+            $serverDefault = $true
+            break
+        }
+        $null = $delay.WaitOne(100)
+    }
+    if (-not $serverDefault) {
+        throw 'Server scaling was not active by default at startup'
+    }
+
+    # The drag tests below use the fixed 3840x2160 letterbox mapping, so
+    # switch to client scaling first (F12 toggles).
+    [CompositorE2ENativeV3]::SendMessage(
+        $compositor.MainWindowHandle, 0x0100, [IntPtr]0x7B,
+        [IntPtr]1) | Out-Null
+    [CompositorE2ENativeV3]::SendMessage(
+        $compositor.MainWindowHandle, 0x0101, [IntPtr]0x7B,
+        [IntPtr]0xC0000001) | Out-Null
+    $clientDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    $clientDefault = $false
+    while ([DateTime]::UtcNow -lt $clientDeadline) {
+        $contents = Get-Content $log -Raw
+        if ($contents -match 'Compositor switched to client scaling; requested CEF viewport 3840x2160') {
+            $clientDefault = $true
+            break
+        }
+        $null = $delay.WaitOne(100)
+    }
+    if (-not $clientDefault) { throw 'F12 did not switch to client scaling' }
     $before = Get-Content $log -Raw
     $matches = [regex]::Matches($before, 'Compositor applied layout revision (\d+)')
     if ($matches.Count -eq 0) { throw 'Initial layout snapshot was not applied' }

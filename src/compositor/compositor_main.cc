@@ -373,6 +373,11 @@ int APIENTRY wWinMain(HINSTANCE instance, HINSTANCE, LPTSTR, int show_command) {
       static_cast<unsigned>(std::max(client_rect.right - client_rect.left, 1L));
     state->client_height =
       static_cast<unsigned>(std::max(client_rect.bottom - client_rect.top, 1L));
+  // The configured scaling mode (server by default) takes effect as soon as
+  // the producer connects; kConnectionMessage sends the initial viewport.
+  state->server_scaling = state->configuration.server_scaling;
+  state->renderer.SetServerScaling(state->server_scaling);
+  UpdateWindowTitle(state.get());
   SetTimer(window, 1, 16, nullptr);
 
   state->client = std::make_unique<streaming::viewer::StreamClient>(

@@ -38,6 +38,19 @@ window:
       configuration.monitor != 1) {
     return Fail("compositor configuration values did not parse");
   }
+  if (!configuration.server_scaling) {
+    return Fail("scaling should default to server");
+  }
+  if (!streaming::compositor::ParseCompositorConfigurationYaml(
+          "window:\n  scaling: client\n", &configuration, &error) ||
+      configuration.server_scaling) {
+    return Fail("window.scaling client was not applied");
+  }
+  if (streaming::compositor::ParseCompositorConfigurationYaml(
+          "window:\n  scaling: sideways\n", &configuration, &error) ||
+      error.find("must be 'server' or 'client'") == std::string::npos) {
+    return Fail("invalid window.scaling value was not rejected");
+  }
   if (streaming::compositor::ParseCompositorConfigurationYaml(
           "websocket:\n  bind_address: 0.0.0.0\n", &configuration, &error) ||
       error.find("loopback") == std::string::npos) {

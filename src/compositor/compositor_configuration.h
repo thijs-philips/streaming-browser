@@ -18,6 +18,10 @@ struct CompositorConfiguration {
   bool maximized = false;
   bool fullscreen = false;
   int monitor = 0;
+  // "server": CEF renders at the compositor's exact client size (default).
+  // "client": CEF renders at the fixed logical output size; the compositor
+  // scales it. F12 toggles at runtime.
+  bool server_scaling = true;
 };
 
 bool ParseCompositorConfigurationYaml(std::string_view yaml,

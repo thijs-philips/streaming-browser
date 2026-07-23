@@ -46,7 +46,7 @@ $producerProcess = Start-Process -FilePath $producer -WorkingDirectory $bin `
 Write-Host "Compositor demo started (compositor PID $($compositorProcess.Id), producer PID $($producerProcess.Id))."
 Write-Host 'Drag separators in the compositor window; source blocks should follow beneath the alpha overlay.'
 Write-Host 'Press F11 in the compositor window to toggle borderless fullscreen.'
-Write-Host 'Press F12 to toggle client scaling (fixed 4K CEF) and server scaling (responsive CEF).'
+Write-Host 'Server scaling (responsive CEF) is the default; press F12 to toggle client scaling (fixed 4K CEF).'
 
 if ($StartCaptureProbe) {
     if (-not $EnableInputRouting) {

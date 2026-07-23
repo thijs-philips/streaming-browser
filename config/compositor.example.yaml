@@ -22,3 +22,7 @@ window:
   # maximized. F11 toggles fullscreen while developing.
   fullscreen: false
   monitor: 0
+  # "server" (default): CEF renders at the compositor's exact client size for
+  # 1:1 pixels. "client": CEF renders the fixed 3840x2160 output and the
+  # compositor letterboxes it. F12 toggles at runtime.
+  scaling: server

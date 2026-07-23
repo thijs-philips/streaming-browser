@@ -48,9 +48,10 @@ Run:
 The launcher starts the compositor first, then CEF with the viewport manager in
 transparent overlay mode. Drag any viewport separator in the compositor window.
 The six simulated source blocks move beneath the overlay. Press F11 to toggle
-borderless fullscreen. Press F12 to toggle between client scaling (fixed
-3840×2160 CEF rendering, scaled by the compositor) and server scaling (CEF
-renders at the compositor's exact current client size for 1:1 pixels).
+borderless fullscreen. Server scaling is the default startup mode
+(`window.scaling: server`): CEF renders at the compositor's exact current
+client size for 1:1 pixels. Press F12 to switch to client scaling (fixed
+3840×2160 CEF rendering, scaled by the compositor) and back.
 
 In server scaling, every compositor-window resize is reported to the producer
 immediately. The producer keeps its shared graphics ring permanently allocated

@@ -128,11 +128,13 @@ bool ParseRoot(const YAML::Node& root,
   }
 
   if (const YAML::Node window = root["window"]) {
+    std::string scaling = configuration->server_scaling ? "server" : "client";
     if (!RequireMap(window, "window", error) ||
         !RejectUnknownKeys(window,
                            {"width", "height", "maximized", "fullscreen",
-                            "monitor"},
+                            "monitor", "scaling"},
                            "window", error) ||
+        !ReadScalar(window, "scaling", "window", &scaling, error) ||
         !ReadScalar(window, "width", "window", &configuration->window_width,
                     error) ||
         !ReadScalar(window, "height", "window", &configuration->window_height,
@@ -150,6 +152,10 @@ bool ParseRoot(const YAML::Node& root,
         !InRange(configuration->monitor, 0, 63, "window.monitor", error)) {
       return false;
     }
+    if (scaling != "server" && scaling != "client") {
+      return Fail("window.scaling must be 'server' or 'client'", error);
+    }
+    configuration->server_scaling = scaling == "server";
   }
 
   if (configuration->maximized && configuration->fullscreen) {

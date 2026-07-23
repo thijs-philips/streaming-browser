@@ -92,7 +92,7 @@ Start-Process (Join-Path $PSScriptRoot 'streaming_compositor.exe') `
 Start-Process (Join-Path $PSScriptRoot 'streaming_browser.exe') `
     -WorkingDirectory $PSScriptRoot `
     -ArgumentList @("--config=`"$producerConfig`"", "--url=$url")
-Write-Host 'Compositor demo started. Drag separators; F11 toggles fullscreen; F12 toggles client/server scaling.'
+Write-Host 'Compositor demo started. Drag separators; F11 toggles fullscreen; F12 toggles scaling (server is default).'
 '@ | Set-Content (Join-Path $package 'run-compositor-demo.ps1') -Encoding UTF8
 
 @'
